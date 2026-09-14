@@ -237,6 +237,7 @@ public class AuthFilter extends OncePerRequestFilter {
         if (path.startsWith("/api/vsoko/mcko")) return AppTab.VSOKO_MCKO;
         if (path.startsWith("/api/mcko")) return AppTab.TEACHERS_MCKO;
         if (path.startsWith("/api/teacher-time-off")) return AppTab.TEACHERS_TIME_OFF;
+        if (path.startsWith("/api/contingent/transfers")) return AppTab.CONTINGENT_CLASS_TRANSFERS;
         if (path.startsWith("/api/salary-group-coefficient-subjects")) return AppTab.TEACHERS_SETTINGS;
         if (path.matches("^/api/teachers/\\d+/(plan-dismiss|cancel-plan-dismiss|dismiss|restore)$")) return AppTab.TEACHERS_DISMISSALS;
         if (path.matches("^/api/teachers/\\d+/(archive|unarchive)$")) return AppTab.TEACHERS_ARCHIVE;
@@ -295,6 +296,10 @@ public class AuthFilter extends OncePerRequestFilter {
                         || user.canViewTab(AppTab.DOCUMENTS_EXIT_ORDERS);
             }
             if ("/api/exit-orders".equals(path)) {
+                return user.canViewTab(AppTab.CLASS_TEACHER_EXIT_ORDER_SUMMARY)
+                        || user.canViewTab(AppTab.DOCUMENTS_EXIT_ORDERS);
+            }
+            if (path.matches("^/api/exit-orders/\\d+/scan$")) {
                 return user.canViewTab(AppTab.CLASS_TEACHER_EXIT_ORDER_SUMMARY)
                         || user.canViewTab(AppTab.DOCUMENTS_EXIT_ORDERS);
             }

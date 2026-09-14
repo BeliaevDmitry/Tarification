@@ -1,6 +1,8 @@
 const settingUi = {
     form: document.getElementById('exit-settings-form'), approval: document.getElementById('exit-settings-approval'),
-    deputy: document.getElementById('exit-settings-deputy'), preambles: document.getElementById('exit-settings-preambles'),
+    director: document.getElementById('exit-settings-director'), deputy: document.getElementById('exit-settings-deputy'),
+    occupationalSafety: document.getElementById('exit-settings-occupational-safety'),
+    security: document.getElementById('exit-settings-security'), preambles: document.getElementById('exit-settings-preambles'),
     eventNames: document.getElementById('exit-settings-event-names'), venues: document.getElementById('exit-settings-venues'),
     addresses: document.getElementById('exit-settings-addresses'), gathering: document.getElementById('exit-settings-gathering'),
     feedback: document.getElementById('exit-settings-feedback'), save: document.getElementById('exit-settings-save')
@@ -14,11 +16,17 @@ async function settingApi(path, options={}) {
 function lines(value){return String(value||'').split(/\r?\n/).map(item=>item.trim()).filter(Boolean);}
 function text(values){return (values||[]).join('\n');}
 function esc(value){return String(value??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));}
+function fillStaffSelect(select, refs, selectedId, defaultName){
+    select.innerHTML=`<option value="">${esc(defaultName||'Не определён')} — по умолчанию</option>`+
+        (refs.teachers||[]).map(item=>`<option value="${item.id}" ${String(item.id)===String(selectedId||'')?'selected':''}>${esc(item.fullName)}${item.position?` — ${esc(item.position)}`:''}</option>`).join('');
+}
 async function loadSettings(){
     const [settings,refs]=await Promise.all([settingApi(settingUrl('/api/exit-orders/settings')),settingApi(settingUrl('/api/exit-orders/references'))]);
     settingUi.approval.value=settings.approvalMode||'ORGANIZATIONAL_BUILDING';
-    settingUi.deputy.innerHTML=`<option value="">${esc(settings.deputyDirectorName||'Власова Юлия Сергеевна')} — по умолчанию</option>`+
-        (refs.teachers||[]).map(item=>`<option value="${item.id}" ${String(item.id)===String(settings.deputyDirectorTeacherId||'')?'selected':''}>${esc(item.fullName)}${item.position?` — ${esc(item.position)}`:''}</option>`).join('');
+    fillStaffSelect(settingUi.director,refs,settings.directorTeacherId,settings.directorName);
+    fillStaffSelect(settingUi.deputy,refs,settings.deputyDirectorTeacherId,settings.deputyDirectorName||'Власова Юлия Сергеевна');
+    fillStaffSelect(settingUi.occupationalSafety,refs,settings.occupationalSafetyTeacherId,settings.occupationalSafetyName);
+    fillStaffSelect(settingUi.security,refs,settings.securitySpecialistTeacherId,settings.securitySpecialistName);
     const d=settings.dictionaries||{};
     settingUi.preambles.value=text(d.PREAMBLE); settingUi.eventNames.value=text(d.EVENT_NAME);
     settingUi.venues.value=text(d.VENUE); settingUi.addresses.value=text(d.EVENT_ADDRESS); settingUi.gathering.value=text(d.GATHERING_PLACE);
@@ -31,6 +39,9 @@ settingUi.form.addEventListener('submit',async event=>{
         settingUi.feedback.textContent='Сохраняем…';
         await settingApi(settingUrl('/api/exit-orders/settings'),{method:'PUT',headers:{'Content-Type':'application/json'},body:JSON.stringify({
             approvalMode:settingUi.approval.value,deputyDirectorTeacherId:Number(settingUi.deputy.value)||null,
+            directorTeacherId:Number(settingUi.director.value)||null,
+            occupationalSafetyTeacherId:Number(settingUi.occupationalSafety.value)||null,
+            securitySpecialistTeacherId:Number(settingUi.security.value)||null,
             dictionaries:{PREAMBLE:lines(settingUi.preambles.value),EVENT_NAME:lines(settingUi.eventNames.value),
                 VENUE:lines(settingUi.venues.value),EVENT_ADDRESS:lines(settingUi.addresses.value),GATHERING_PLACE:lines(settingUi.gathering.value)}
         })});

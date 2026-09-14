@@ -408,6 +408,7 @@ public class AppUserServiceImpl implements AppUserService {
                         () -> new EnumMap<>(AppTab.class)));
         mergeLegacyNotificationPermission(existingByTab);
         ensureClassTeacherRolePermissions(user, existingByTab);
+        ensureSecretaryRolePermissions(user, existingByTab);
 
         List<AppUserTabPermission> missing = new ArrayList<>();
         for (AppTab tab : AppTab.navigableTabs()) {
@@ -429,6 +430,12 @@ public class AppUserServiceImpl implements AppUserService {
                 canEdit = user.isCanEdit() && tab != AppTab.CLASS_TEACHER_EXIT_ORDER_SUMMARY;
                 canImport = canEdit && tab == AppTab.EDUCATIONAL_WORK;
                 canExport = false;
+            }
+            if (user.hasRole(UserRole.SECRETARY) && user.isCanView()
+                    && tab == AppTab.CONTINGENT_CLASS_TRANSFERS) {
+                canView = true;
+                canEdit = user.isCanEdit();
+                canImport = false;
             }
             if (isSensitivePermission(tab) && !user.hasRole(UserRole.ADMIN)) {
                 missing.add(buildPermission(user, tab, false, false, false, false));
@@ -461,6 +468,11 @@ public class AppUserServiceImpl implements AppUserService {
         grantRolePermission(existingByTab.get(AppTab.EDUCATIONAL_WORK), true, true);
     }
 
+    private void ensureSecretaryRolePermissions(AppUser user, Map<AppTab, AppUserTabPermission> existingByTab) {
+        if (!user.hasRole(UserRole.SECRETARY) || !user.isCanView()) return;
+        grantRolePermission(existingByTab.get(AppTab.CONTINGENT_CLASS_TRANSFERS), user.isCanEdit(), false);
+    }
+
     private void grantRolePermission(AppUserTabPermission permission, boolean canEdit, boolean canImport) {
         if (permission == null) return;
         boolean changed = !permission.isCanView()
@@ -485,6 +497,9 @@ public class AppUserServiceImpl implements AppUserService {
             return AppTab.CONTINGENT_STATS;
         }
         if (tab == AppTab.CONTINGENT_ADMISSION) {
+            return AppTab.CONTINGENT_STATS;
+        }
+        if (tab == AppTab.CONTINGENT_CLASS_TRANSFERS) {
             return AppTab.CONTINGENT_STATS;
         }
         if (tab == AppTab.CLASS_TEACHER_EXIT_ORDER_CREATE
@@ -792,7 +807,8 @@ public class AppUserServiceImpl implements AppUserService {
                 || tab == AppTab.CLASS_TEACHER_EXIT_ORDER_SUMMARY
                 || tab == AppTab.EDUCATIONAL_WORK);
         boolean secretary = user.hasRole(UserRole.SECRETARY)
-                && (tab == AppTab.CONTINGENT_STATS || tab == AppTab.CONTINGENT_ADMISSION);
+                && (tab == AppTab.CONTINGENT_STATS || tab == AppTab.CONTINGENT_ADMISSION
+                || tab == AppTab.CONTINGENT_CLASS_TRANSFERS);
         return classTeacher || secretary;
     }
 
@@ -802,7 +818,8 @@ public class AppUserServiceImpl implements AppUserService {
         if (!usesRestrictedRoleProfile(user)) return true;
         boolean classTeacher = user.hasRole(UserRole.CLASS_TEACHER)
                 && (tab == AppTab.CLASS_TEACHER_EXIT_ORDER_CREATE || tab == AppTab.EDUCATIONAL_WORK);
-        boolean secretary = user.hasRole(UserRole.SECRETARY) && tab == AppTab.CONTINGENT_ADMISSION;
+        boolean secretary = user.hasRole(UserRole.SECRETARY)
+                && (tab == AppTab.CONTINGENT_ADMISSION || tab == AppTab.CONTINGENT_CLASS_TRANSFERS);
         return classTeacher || secretary;
     }
 

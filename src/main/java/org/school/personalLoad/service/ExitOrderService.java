@@ -21,6 +21,7 @@ public interface ExitOrderService {
     ExitOrderDtos.OrderView uploadScan(Long id, MultipartFile file, SessionUser user) throws IOException;
     ProbeOrderDtos.FilePayload signedScan(Long id, SessionUser user);
     ExitOrderDtos.OrderView markAttendance(Long id, ExitOrderDtos.AttendanceRequest request, SessionUser user);
+    void delete(Long id, SessionUser user);
     ExitOrderDtos.SettingsView settings(String academicYear, SessionUser user);
     ExitOrderDtos.SettingsView updateSettings(String academicYear, ExitOrderDtos.SettingsRequest request, SessionUser user);
     ExitOrderDtos.SummaryView summary(String academicYear, SessionUser user);

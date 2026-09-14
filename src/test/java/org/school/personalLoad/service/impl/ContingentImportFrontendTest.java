@@ -137,4 +137,23 @@ class ContingentImportFrontendTest {
         assertTrue(authScript.contains("#roles') return 'CONTINGENT_ADMISSION_ROLES'"));
         assertTrue(adminScript.contains("CONTINGENT_ADMISSION_ROLES', label: 'Роли приёма', sensitive: true"));
     }
+
+    @Test
+    void classTransfersKeepWaitingPromiseAndHistory() throws Exception {
+        String html = Files.readString(Path.of("src/main/resources/static/contingent.html"));
+        String pageScript = Files.readString(Path.of("src/main/resources/static/contingent.js"));
+        String authScript = Files.readString(Path.of("src/main/resources/static/auth.js"));
+
+        assertTrue(html.contains("data-contingent-tab=\"transfers\""));
+        assertTrue(html.contains("id=\"student-transfer-promised-date\""));
+        assertTrue(html.contains("id=\"student-transfer-promise-note\""));
+        assertTrue(html.contains("id=\"student-transfer-status\""));
+        assertTrue(html.contains("<option value=\"WAITING_FOR_PLACE\">Зона ожидания</option>"));
+        assertTrue(pageScript.contains("/api/contingent/transfers"));
+        assertTrue(pageScript.contains("WAITING_FOR_PLACE: 'Зона ожидания'"));
+        assertTrue(pageScript.contains("Заявление зарегистрировано и добавлено в зону ожидания"));
+        assertTrue(pageScript.contains("row.promiseNote"));
+        assertTrue(pageScript.contains("row.history"));
+        assertTrue(authScript.contains("#transfers', tab: 'CONTINGENT_CLASS_TRANSFERS'"));
+    }
 }

@@ -3,11 +3,11 @@ package org.school.personalLoad.service.impl;
 import org.apache.poi.xwpf.usermodel.ParagraphAlignment;
 import org.apache.poi.xwpf.usermodel.IBodyElement;
 import org.apache.poi.xwpf.usermodel.XWPFDocument;
-import org.apache.poi.xwpf.usermodel.XWPFFooter;
 import org.apache.poi.xwpf.usermodel.XWPFParagraph;
 import org.apache.poi.xwpf.usermodel.XWPFTable;
 import org.apache.poi.xwpf.usermodel.UnderlinePatterns;
 import org.junit.jupiter.api.Test;
+import org.openxmlformats.schemas.officeDocument.x2006.sharedTypes.STYAlign;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.STTabJc;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.STTblWidth;
 
@@ -51,12 +51,7 @@ class ProbeOrderDocumentServiceTest {
             List<XWPFParagraph> instructionBullets = document.getParagraphs().stream()
                     .filter(paragraph -> paragraph.getText().trim().startsWith("- "))
                     .collect(Collectors.toList());
-            XWPFFooter executorFooter = document.getFooterList().stream()
-                    .filter(footer -> footer.getParagraphs().stream()
-                            .anyMatch(paragraph -> paragraph.getText().contains("Исп.:")))
-                    .findFirst()
-                    .orElseThrow();
-            XWPFParagraph executor = executorFooter.getParagraphs().stream()
+            XWPFParagraph executor = document.getParagraphs().stream()
                     .filter(paragraph -> paragraph.getText().contains("Исп.:"))
                     .findFirst().orElseThrow();
             XWPFParagraph companions = document.getParagraphs().stream()
@@ -68,8 +63,11 @@ class ProbeOrderDocumentServiceTest {
             assertTrue(text.contains("17.09.2026"));
             assertTrue(text.contains("Иванова И.И."));
             assertTrue(text.contains("Московский колледж технологий"));
-            assertFalse(text.contains("Исп.: Петрова М.С."));
-            assertTrue(executorFooter.getText().contains("Исп.: Петрова М.С."));
+            assertTrue(text.contains("Исп.: Петрова М.С."));
+            assertTrue(document.getFooterList().stream().noneMatch(footer -> footer.getText().contains("Исп.:")));
+            assertTrue(executor.getText().contains("+7 999 100-20-30"));
+            assertTrue(executor.getCTP().getPPr().isSetFramePr());
+            assertEquals(STYAlign.BOTTOM, executor.getCTP().getPPr().getFramePr().getYAlign());
             assertTrue(text.contains("Орлова Светлана Викторовна"));
             assertFalse(text.contains("Жданова"));
             assertTrue(text.contains("Коваленко А.А."));
@@ -147,23 +145,21 @@ class ProbeOrderDocumentServiceTest {
                     || (paragraph.getCTP().getPPr().getRPr().sizeOfBArray() == 0
                     && paragraph.getCTP().getPPr().getRPr().sizeOfBCsArray() == 0)));
             assertTrue(text.contains("Назначить руководителем группы Петрову М.С."));
+            assertTrue(text.contains("заместителем руководителя группы Аулову М.В., сопровождающим Орлову С.В."));
             assertTrue(text.contains("Руководителю группы Петровой М.С."));
             assertTrue(text.contains("директору школы Ивановой И.И."));
             XWPFParagraph appendix = document.getParagraphs().stream()
                     .filter(paragraph -> paragraph.getText().equals("Приложение № 1"))
                     .findFirst().orElseThrow();
-            assertFalse(appendix.isPageBreak());
+            assertTrue(appendix.isPageBreak());
             List<IBodyElement> bodyElements = document.getBodyElements();
             int appendixReferenceIndex = java.util.stream.IntStream.range(0, bodyElements.size())
                     .filter(index -> bodyElements.get(index) instanceof XWPFParagraph paragraph
                             && paragraph.getText().contains("к Приказу №"))
                     .findFirst().orElseThrow();
             assertTrue(bodyElements.get(appendixReferenceIndex + 1) instanceof XWPFTable);
-            assertTrue(executorFooter._getHdrFtr().xmlText().contains("SECTIONPAGES"));
-            assertTrue(document.getParagraphs().stream()
-                    .anyMatch(paragraph -> paragraph.getCTP().isSetPPr()
-                            && paragraph.getCTP().getPPr().isSetSectPr()
-                            && paragraph.getCTP().getPPr().getSectPr().sizeOfFooterReferenceArray() == 1));
+            assertTrue(document.getFooterList().stream()
+                    .noneMatch(footer -> footer._getHdrFtr().xmlText().contains("SECTIONPAGES")));
             double borderCount = (double) XPathFactory.newInstance().newXPath().evaluate(
                     "count(//*[local-name()='tblBorders']/*[@*[local-name()='val']='single'])",
                     document.getDocument().getDomNode(), XPathConstants.NUMBER);
@@ -194,13 +190,19 @@ class ProbeOrderDocumentServiceTest {
         ProbeOrderDocumentService.DocumentData source = sampleData();
         String preamble = "На основании решения педагогического совета ГБОУ Школа № 7";
         String purpose = "на мероприятие «Экскурсия в Государственный исторический музей»";
+        ProbeOrderDocumentService.PersonData occupationalSafety = new ProbeOrderDocumentService.PersonData(
+                5L, "Соколова Елена Павловна", "Соколовой Елене Павловне",
+                "Соколову Елену Павловну", "Соколова Е.П.", null);
+        ProbeOrderDocumentService.PersonData security = new ProbeOrderDocumentService.PersonData(
+                6L, "Морозов Павел Ильич", "Морозову Павлу Ильичу",
+                "Морозова Павла Ильича", "Морозов П.И.", null);
         ProbeOrderDocumentService.DocumentData data = new ProbeOrderDocumentService.DocumentData(
                 source.academicYear(), source.orderNumber(), source.orderDate(), source.eventDate(), source.startTime(),
                 source.formattedClasses(), source.classWord(), source.venue(), source.eventAddress(),
                 source.gatheringTime(), source.gatheringPlace(), source.returnTime(), source.curator(),
                 source.primaryCompanion(), source.secondaryCompanion(), source.additionalCompanions(), source.signer(),
-                source.signerPosition(), source.director(), source.deputyDirector(), source.executor(),
-                source.participants(), preamble, purpose);
+                source.signerPosition(), source.director(), source.deputyDirector(), occupationalSafety, security,
+                source.executor(), source.participants(), preamble, purpose);
 
         byte[] content = service.generate(data);
         try (XWPFDocument document = new XWPFDocument(new ByteArrayInputStream(content))) {
@@ -211,6 +213,9 @@ class ProbeOrderDocumentServiceTest {
             }).collect(Collectors.joining("\n"));
             assertTrue(bodyText.contains(preamble));
             assertTrue(bodyText.contains(purpose));
+            assertTrue(bodyText.contains("Специалисту по охране труда Соколовой Е.П."));
+            assertTrue(bodyText.contains("специалисту по безопасности Морозову П.И."));
+            assertFalse(bodyText.contains("Морозову П.И.."));
             assertFalse(bodyText.contains("профориентационного проекта"));
         }
 
@@ -222,13 +227,38 @@ class ProbeOrderDocumentServiceTest {
         }
     }
 
+    @Test
+    void usesPluralCompanionWordingForSeveralAdditionalCompanions() throws Exception {
+        ProbeOrderDocumentService service = new ProbeOrderDocumentService();
+        ProbeOrderDocumentService.DocumentData source = sampleData();
+        ProbeOrderDocumentService.PersonData secondAdditional = new ProbeOrderDocumentService.PersonData(
+                7L, "Кузнецова Анна Павловна", "Кузнецовой Анне Павловне",
+                "Кузнецову Анну Павловну", "Кузнецова А.П.", null);
+        ProbeOrderDocumentService.DocumentData data = new ProbeOrderDocumentService.DocumentData(
+                source.academicYear(), source.orderNumber(), source.orderDate(), source.eventDate(), source.startTime(),
+                source.formattedClasses(), source.classWord(), source.venue(), source.eventAddress(),
+                source.gatheringTime(), source.gatheringPlace(), source.returnTime(), source.curator(),
+                source.primaryCompanion(), source.secondaryCompanion(),
+                List.of(source.additionalCompanions().get(0), secondAdditional), source.signer(),
+                source.signerPosition(), source.director(), source.deputyDirector(), source.executor(),
+                source.participants());
+
+        byte[] content = service.generate(data);
+        try (XWPFDocument document = new XWPFDocument(new ByteArrayInputStream(content))) {
+            String bodyText = document.getParagraphs().stream().map(XWPFParagraph::getText)
+                    .collect(Collectors.joining("\n"));
+            assertTrue(bodyText.contains("сопровождающими Орлову С.В., Кузнецову А.П."));
+            assertFalse(bodyText.contains("сопровождающим Орлову С.В., Кузнецову А.П."));
+        }
+    }
+
     private ProbeOrderDocumentService.DocumentData sampleData() {
         ProbeOrderDocumentService.PersonData primary = new ProbeOrderDocumentService.PersonData(
                 1L, "Петрова Мария Сергеевна", "Петровой Марии Сергеевне",
                 "Петрову Марию Сергеевну", "Петрова М.С.", "+7 999 100-20-30");
         ProbeOrderDocumentService.PersonData secondary = new ProbeOrderDocumentService.PersonData(
-                2L, "Сидоров Андрей Олегович", "Сидорову Андрею Олеговичу",
-                "Сидорова Андрея Олеговича", "Сидоров А.О.", "+7 999 200-30-40");
+                2L, "Аулова Марина Викторовна", "Ауловой Марине Викторовне",
+                "Аулова Марину Викторовну", "Аулова М.В.", "+7 999 200-30-40");
         ProbeOrderDocumentService.PersonData signer = new ProbeOrderDocumentService.PersonData(
                 3L, "Иванова Ирина Игоревна", "Ивановой Ирине Игоревне",
                 "Иванову Ирину Игоревну", "Иванова И.И.", null);

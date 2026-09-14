@@ -96,6 +96,11 @@ public class ExitOrderController {
         return service.markAttendance(id, body, user(request));
     }
 
+    @DeleteMapping("/{id}")
+    public void delete(@PathVariable Long id, HttpServletRequest request) {
+        service.delete(id, user(request));
+    }
+
     @GetMapping("/settings")
     public ExitOrderDtos.SettingsView settings(@RequestParam(required = false) String academicYear,
                                                 HttpServletRequest request) {

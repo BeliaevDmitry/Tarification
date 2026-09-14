@@ -56,6 +56,7 @@ const TAB_GROUPS = [
         tabs: [
             { key: 'CONTINGENT_STATS', label: 'Численность и списки' },
             { key: 'CONTINGENT_ADMISSION', label: 'Приём обучающихся' },
+            { key: 'CONTINGENT_CLASS_TRANSFERS', label: 'Переводы между классами' },
             { key: 'CONTINGENT_ADMISSION_ROLES', label: 'Роли приёма', sensitive: true },
             { key: 'CONTINGENT_IMPORT', label: 'Импорт и сверка контингента' },
             { key: 'OVZ', label: 'ОВЗ и сопровождение' }
@@ -1146,8 +1147,10 @@ function applyRoleBaseValues(prefix) {
             || tab.key === 'CLASS_TEACHER_EXIT_ORDER_SUMMARY' || tab.key === 'EDUCATIONAL_WORK');
         const classTeacherEdit = classTeacherRole && (tab.key === 'CLASS_TEACHER_EXIT_ORDER_CREATE'
             || tab.key === 'EDUCATIONAL_WORK');
-        const secretaryView = secretaryRole && (tab.key === 'CONTINGENT_STATS' || tab.key === 'CONTINGENT_ADMISSION');
-        const secretaryEdit = secretaryRole && tab.key === 'CONTINGENT_ADMISSION';
+        const secretaryView = secretaryRole && (tab.key === 'CONTINGENT_STATS' || tab.key === 'CONTINGENT_ADMISSION'
+            || tab.key === 'CONTINGENT_CLASS_TRANSFERS');
+        const secretaryEdit = secretaryRole && (tab.key === 'CONTINGENT_ADMISSION'
+            || tab.key === 'CONTINGENT_CLASS_TRANSFERS');
         view.checked = broadRole || classTeacherView || secretaryView;
         edit.checked = (broadRole && allowEdit) || classTeacherEdit || secretaryEdit;
         imp.checked = edit.checked;

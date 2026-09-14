@@ -17,6 +17,7 @@ const ui = {
     saveBuildingBtn: document.getElementById("save-building-btn"),
     clearBuildingLoadBtn: document.getElementById("clear-building-load-btn"),
     loadResult: document.getElementById("load-result"),
+    table: document.getElementById("building-load-table"),
     tableHead: document.getElementById("building-load-head"),
     tableBody: document.getElementById("building-load-body"),
     sortField: document.getElementById("sort-field-select"),
@@ -2756,6 +2757,8 @@ function renderTable() {
     ensureTeacherRowsForBuilding();
 
     const classes = visibleClassesForSelectedBuilding();
+    ui.table?.classList.toggle("load-many-classes", classes.length > 18);
+    ui.table?.classList.toggle("load-very-many-classes", classes.length > 26);
     const referenceDate = currentDisplayDate();
     let presentationRows = limitPresentationRowsToClasses(
         filterPresentationRowsByViewMode(buildPresentationRows()),
@@ -2797,14 +2800,14 @@ function renderTable() {
     headMain.innerHTML = `
         <th rowspan="2">Предмет</th>
         <th rowspan="2">Педагог</th>
-        <th rowspan="2">Часы по предмету</th>
-        <th rowspan="2">Часов в корпусе</th>
-        <th rowspan="2">Всего часов в комплексе</th>
+        <th rowspan="2" title="Часы по предмету">По<br>предм.</th>
+        <th rowspan="2" title="Часов в корпусе">Корпус</th>
+        <th rowspan="2" title="Всего часов в комплексе">Всего</th>
         <th colspan="${Math.max(classes.length, 1)}">
             <div class="load-head-actions">
                 <span><strong>Ошибки: <button type="button" class="error-count-btn" data-head-error-info="1">${errorCount}</button></strong></span>
-                <button type="button" class="head-action-btn" data-head-save="1">${state.scopeMode === "address" ? "Сохранить нагрузку адреса" : "Сохранить нагрузку корпуса"}</button>
-                <button type="button" class="head-action-btn" data-head-next-error="1">Перейти к ошибке</button>
+                <button type="button" class="head-action-btn" data-head-save="1" title="${state.scopeMode === "address" ? "Сохранить нагрузку адреса" : "Сохранить нагрузку корпуса"}">Сохранить</button>
+                <button type="button" class="head-action-btn" data-head-next-error="1" title="Перейти к следующей ошибке">К ошибке</button>
             </div>
         </th>
     `;
@@ -2839,13 +2842,13 @@ function renderTable() {
 
         tr.innerHTML = `
             <td>
-                <div class="subject-cell">
+                <div class="subject-cell" title="${esc(row.displaySubjectName || row.subjectName)}">
                     <span class="subject-cell-name ${row.curriculumPart === "EXTRACURRICULAR" ? "extracurricular-subject" : ""}">${esc(row.displaySubjectName || row.subjectName)}</span>
                     ${index === 0 || presentationRows[index - 1].subjectKey !== row.subjectKey ? `<button class="inline-plus" type="button" data-plus-subject="${esc(row.subjectKey)}" data-plus-after="${esc(row.teacherRowId)}" title="Добавить строку педагога">+</button>` : ""}
                 </div>
             </td>
             <td class="${[isDismissedTeacher(row.teacherName) ? "dismissal-row" : "", vacancyTeacher ? "vacancy-row" : ""].filter(Boolean).join(" ")}">
-                <input type="text" class="teacher-input" data-subject-key="${esc(row.subjectKey)}" data-row-id="${esc(row.teacherRowId)}" list="${listId}" value="${esc(row.teacherName)}" placeholder="ФИО педагога">
+                <input type="text" class="teacher-input" data-subject-key="${esc(row.subjectKey)}" data-row-id="${esc(row.teacherRowId)}" list="${listId}" value="${esc(row.teacherName)}" title="${esc(row.teacherName)}" placeholder="ФИО педагога">
                 <datalist id="${listId}"></datalist>
                 ${isDismissedTeacher(row.teacherName)
                     ? `<div class="dismissal-note">Увольнение с ${esc(formatTeacherStatusDate(dismissalDateOfTeacher(row.teacherName)))}</div>`

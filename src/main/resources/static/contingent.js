@@ -92,6 +92,30 @@ const ui = {
     admissionRoleDecision: document.getElementById('admission-role-decision'),
     admissionRoleDialogMessage: document.getElementById('admission-role-dialog-message'),
     admissionRoleSave: document.getElementById('admission-role-save'),
+    transferRefreshBtn: document.getElementById('student-transfer-refresh-btn'),
+    transferAddBtn: document.getElementById('student-transfer-add-btn'),
+    transferTotals: document.getElementById('student-transfer-totals'),
+    transferFilter: document.getElementById('student-transfer-filter'),
+    transferMessage: document.getElementById('student-transfer-message'),
+    transferBody: document.getElementById('student-transfer-body'),
+    transferDialog: document.getElementById('student-transfer-dialog'),
+    transferForm: document.getElementById('student-transfer-form'),
+    transferDialogTitle: document.getElementById('student-transfer-dialog-title'),
+    transferDialogClose: document.getElementById('student-transfer-dialog-close'),
+    transferCancelBtn: document.getElementById('student-transfer-cancel-btn'),
+    transferId: document.getElementById('student-transfer-id'),
+    transferStudentSearch: document.getElementById('student-transfer-student-search'),
+    transferStudent: document.getElementById('student-transfer-student'),
+    transferFromClass: document.getElementById('student-transfer-from-class'),
+    transferTargetClass: document.getElementById('student-transfer-target-class'),
+    transferRequestDate: document.getElementById('student-transfer-request-date'),
+    transferReason: document.getElementById('student-transfer-reason'),
+    transferPromisedDate: document.getElementById('student-transfer-promised-date'),
+    transferPromiseNote: document.getElementById('student-transfer-promise-note'),
+    transferStatus: document.getElementById('student-transfer-status'),
+    transferCompletedDate: document.getElementById('student-transfer-completed-date'),
+    transferComment: document.getElementById('student-transfer-comment'),
+    transferDialogMessage: document.getElementById('student-transfer-dialog-message'),
     manualSourceSelect: document.getElementById('contingent-class-size-source'),
     manualSourceSaveBtn: document.getElementById('contingent-class-size-source-save-btn'),
     manualFileInput: document.getElementById('contingent-manual-file'),
@@ -186,6 +210,7 @@ const formatDisplayDate = (value) => {
 let currentStats = null;
 let currentAdmissionData = { candidates: [], parallels: [] };
 let currentAdmissionRoles = { users: [], canEdit: false };
+let currentTransferData = { requests: [], studentOptions: [], classOptions: [], access: {} };
 let admissionAccess = null;
 let currentManualRows = [];
 let currentSupportSummary = null;
@@ -271,7 +296,8 @@ function contingentPermissions() {
     const permissions = window.tarificationTabPermissions || {};
     if (window.tarificationAuth?.admin) {
         return { canImportView: true, canImportEdit: true, canStatsView: true, canManualView: true, canSupportView: true,
-            canAdmissionView: true, canAdmissionEdit: true, canAdmissionDecide: true, canAdmissionRolesView: true, canAdmissionRolesEdit: true };
+            canAdmissionView: true, canAdmissionEdit: true, canAdmissionDecide: true, canAdmissionRolesView: true, canAdmissionRolesEdit: true,
+            canTransferView: true, canTransferEdit: true };
     }
     const secretaryRole = (window.tarificationAuth?.roles || [window.tarificationAuth?.role])
         .filter(Boolean).includes('SECRETARY');
@@ -284,6 +310,8 @@ function contingentPermissions() {
         canAdmissionView: Boolean(admissionAccess?.canView || secretaryRole || permissions.CONTINGENT_ADMISSION?.canView || permissions.CONTINGENT_STATS?.canView),
         canAdmissionEdit: Boolean(admissionAccess?.canEdit || secretaryRole || permissions.CONTINGENT_ADMISSION?.canEdit),
         canAdmissionDecide: Boolean(admissionAccess?.canDecide),
+        canTransferView: Boolean(permissions.CONTINGENT_CLASS_TRANSFERS?.canView),
+        canTransferEdit: Boolean(permissions.CONTINGENT_CLASS_TRANSFERS?.canEdit),
         canAdmissionRolesView: Boolean(admissionAccess?.canManageRoles || permissions.CONTINGENT_ADMISSION_ROLES?.canView),
         canAdmissionRolesEdit: Boolean(admissionAccess?.canEditRoles || permissions.CONTINGENT_ADMISSION_ROLES?.canEdit)
     };
@@ -298,21 +326,23 @@ async function waitForAuthContext() {
 }
 
 function applyTabAccess() {
-    const { canImportView, canStatsView, canManualView, canSupportView, canAdmissionView, canAdmissionRolesView } = contingentPermissions();
+    const { canImportView, canStatsView, canManualView, canSupportView, canAdmissionView, canAdmissionRolesView, canTransferView } = contingentPermissions();
     ui.tabs.forEach((tab) => {
         const tabName = tab.dataset.contingentTab;
         const allowed = (tabName === 'import' || tabName === 'mismatches')
             ? canImportView
             : (tabName === 'admissions' ? canAdmissionView
+                : (tabName === 'transfers' ? canTransferView
                 : (tabName === 'roles' ? canAdmissionRolesView
             : (tabName === 'manual'
                 ? canManualView
-                : ((tabName === 'support' || tabName === 'nosologies') ? canSupportView : canStatsView))));
+                : ((tabName === 'support' || tabName === 'nosologies') ? canSupportView : canStatsView)))));
         tab.style.display = allowed ? '' : 'none';
     });
 
     if (canStatsView) return 'stats';
     if (canAdmissionView) return 'admissions';
+    if (canTransferView) return 'transfers';
     if (canAdmissionRolesView) return 'roles';
     if (canSupportView) return 'support';
     if (canManualView) return 'manual';
@@ -677,6 +707,207 @@ async function downloadCustomContingent() {
         ui.customExportResult.textContent = `Ошибка: ${error.message}`;
     } finally {
         ui.customExportDownload.disabled = false;
+    }
+}
+
+const studentTransferStatusLabel = (value) => ({
+    WAITING_FOR_PLACE: 'Зона ожидания',
+    PROMISED: 'Перевод обещан',
+    APPROVED: 'Перевод согласован',
+    TRANSFERRED: 'Переведён',
+    DECLINED: 'Отказано',
+    WITHDRAWN: 'Заявление отозвано'
+}[value] || value || 'Зона ожидания');
+
+function localIsoDate() {
+    const value = new Date();
+    value.setMinutes(value.getMinutes() - value.getTimezoneOffset());
+    return value.toISOString().slice(0, 10);
+}
+
+function formatDisplayDateTime(value) {
+    if (!value) return '';
+    const date = new Date(value);
+    return Number.isNaN(date.getTime()) ? String(value) : date.toLocaleString('ru-RU', {
+        day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+    });
+}
+
+function renderTransferOverview(data) {
+    currentTransferData = data || { requests: [], studentOptions: [], classOptions: [], access: {} };
+    ui.transferAddBtn.hidden = !currentTransferData.access?.canEdit;
+    const totals = [
+        ['Всего заявлений', currentTransferData.total || 0, 'total'],
+        ['В зоне ожидания', currentTransferData.waiting || 0, 'active'],
+        ['Переведено', currentTransferData.transferred || 0, 'enrolled'],
+        ['Закрыто без перевода', currentTransferData.closed || 0, 'refused']
+    ];
+    ui.transferTotals.innerHTML = totals.map(([label, value, type]) => `
+        <article class="admission-total admission-total-${type}"><strong>${esc(value)}</strong><span>${esc(label)}</span></article>
+    `).join('');
+    renderTransferRows();
+}
+
+function transferMatchesFilter(row, filter) {
+    const status = row.status || 'WAITING_FOR_PLACE';
+    if (filter === 'ALL') return true;
+    if (filter === 'WAITING') return status === 'WAITING_FOR_PLACE';
+    if (filter === 'TRANSFERRED') return status === 'TRANSFERRED';
+    if (filter === 'CLOSED') return status === 'DECLINED' || status === 'WITHDRAWN';
+    return status === 'WAITING_FOR_PLACE' || status === 'PROMISED' || status === 'APPROVED';
+}
+
+function transferHistory(history) {
+    if (!history?.length) return '<span class="muted">—</span>';
+    return `<details class="student-transfer-history"><summary>${history.length} ${history.length === 1 ? 'запись' : 'записи'}</summary>
+        <div>${history.map((item) => `<article><strong>${esc(item.action)}</strong><br>
+            <span>${esc(formatDisplayDateTime(item.changedAt))} · ${esc(item.changedBy)}</span>
+            <p>${esc(item.details)}</p></article>`).join('')}</div></details>`;
+}
+
+function transferPromise(row) {
+    const parts = [];
+    if (row.promisedDate) parts.push(`<strong>${esc(formatDisplayDate(row.promisedDate))}</strong>`);
+    if (row.promiseNote) parts.push(esc(row.promiseNote).replaceAll('\n', '<br>'));
+    return parts.length ? parts.join('<br>') : '<span class="muted">Не зафиксировано</span>';
+}
+
+function renderTransferRows() {
+    const filter = ui.transferFilter?.value || 'ACTIVE';
+    const rows = (currentTransferData.requests || []).filter((row) => transferMatchesFilter(row, filter));
+    ui.transferBody.innerHTML = rows.length ? rows.map((row) => `<tr class="student-transfer-status-${esc(String(row.status || 'WAITING_FOR_PLACE').toLowerCase())}">
+        <td><strong>${esc(row.studentName)}</strong><br><span class="muted">Внесено: ${esc(row.createdBy || '—')}</span></td>
+        <td><strong>${esc(row.fromClassName)} → ${esc(row.targetClassName)}</strong></td>
+        <td>${esc(formatDisplayDate(row.requestDate))}</td>
+        <td class="multiline-cell">${admissionText(row.reason)}</td>
+        <td class="multiline-cell">${transferPromise(row)}</td>
+        <td><span class="student-transfer-status">${esc(studentTransferStatusLabel(row.status))}</span></td>
+        <td>${row.completedDate ? esc(formatDisplayDate(row.completedDate)) : '<span class="muted">—</span>'}</td>
+        <td class="multiline-cell">${admissionText(row.comment)}</td>
+        <td>${transferHistory(row.history)}</td>
+        <td>${currentTransferData.access?.canEdit
+            ? `<button type="button" class="secondary" data-student-transfer-edit="${esc(row.id)}">Изменить</button>`
+            : '<span class="muted">Только просмотр</span>'}</td>
+    </tr>`).join('') : '<tr><td colspan="10" class="muted">В выбранном списке заявлений нет.</td></tr>';
+}
+
+async function refreshTransfers() {
+    ui.transferMessage.textContent = 'Загружаю заявления…';
+    try {
+        const data = await api('/api/contingent/transfers');
+        renderTransferOverview(data);
+        ui.transferMessage.textContent = `Учебный год: ${data.academicYear}. Дети и классы взяты из последней выгрузки.`;
+    } catch (error) {
+        ui.transferMessage.textContent = `Ошибка: ${error.message}`;
+        throw error;
+    }
+}
+
+function renderTransferStudentOptions(filter = '', selectedId = '') {
+    const needle = String(filter || '').trim().toLocaleLowerCase('ru');
+    const selected = String(selectedId || ui.transferStudent.value || '');
+    let options = (currentTransferData.studentOptions || []).filter((item) => !needle
+        || `${item.fullName} ${item.className}`.toLocaleLowerCase('ru').includes(needle));
+    const selectedRow = (currentTransferData.studentOptions || [])
+        .find((item) => String(item.studentId) === selected);
+    options = options.slice(0, 200);
+    if (selectedRow && !options.some((item) => String(item.studentId) === selected)) options.unshift(selectedRow);
+    ui.transferStudent.innerHTML = '<option value="">Выберите ребёнка</option>' + options.map((item) =>
+        `<option value="${esc(item.studentId)}">${esc(item.fullName)} — ${esc(item.className)}</option>`
+    ).join('');
+    ui.transferStudent.value = selected;
+}
+
+function selectedTransferStudent() {
+    const id = String(ui.transferStudent.value || '');
+    return (currentTransferData.studentOptions || []).find((item) => String(item.studentId) === id) || null;
+}
+
+function updateTransferClassOptions(selectedTarget = '') {
+    const student = selectedTransferStudent();
+    ui.transferFromClass.value = student?.className || '';
+    const classes = (currentTransferData.classOptions || []).filter((item) => student
+        && Number(item.parallel) === Number(student.parallel)
+        && String(item.className).toLocaleLowerCase('ru') !== String(student.className).toLocaleLowerCase('ru'));
+    ui.transferTargetClass.innerHTML = '<option value="">Выберите класс</option>' + classes.map((item) =>
+        `<option value="${esc(item.className)}">${esc(item.className)} — ${esc(item.students)} чел.</option>`
+    ).join('');
+    if (selectedTarget && !classes.some((item) => item.className === selectedTarget)) {
+        const option = document.createElement('option');
+        option.value = selectedTarget;
+        option.textContent = `${selectedTarget} — класс из заявления`;
+        ui.transferTargetClass.appendChild(option);
+    }
+    ui.transferTargetClass.value = selectedTarget || '';
+}
+
+function updateTransferCompletedDateState() {
+    const transferred = ui.transferStatus.value === 'TRANSFERRED';
+    ui.transferCompletedDate.disabled = !transferred;
+    if (transferred && !ui.transferCompletedDate.value) ui.transferCompletedDate.value = localIsoDate();
+    if (!transferred) ui.transferCompletedDate.value = '';
+}
+
+function openTransferDialog(row = null) {
+    ui.transferForm.reset();
+    ui.transferId.value = row?.id || '';
+    ui.transferDialogTitle.textContent = row ? 'Изменить заявление на перевод' : 'Добавить заявление на перевод';
+    ui.transferStudentSearch.value = row ? row.studentName : '';
+    ui.transferStudentSearch.disabled = Boolean(row);
+    ui.transferStudent.disabled = Boolean(row);
+    renderTransferStudentOptions(row ? row.studentName : '', row?.studentId || '');
+    if (row && !selectedTransferStudent()) {
+        const option = document.createElement('option');
+        option.value = row.studentId;
+        option.textContent = `${row.studentName} — ${row.fromClassName}`;
+        option.selected = true;
+        ui.transferStudent.appendChild(option);
+        currentTransferData.studentOptions.push({
+            studentId: row.studentId, fullName: row.studentName, className: row.fromClassName,
+            parallel: Number.parseInt(row.fromClassName, 10)
+        });
+    }
+    updateTransferClassOptions(row?.targetClassName || '');
+    ui.transferRequestDate.value = row?.requestDate || localIsoDate();
+    ui.transferReason.value = row?.reason || '';
+    ui.transferPromisedDate.value = row?.promisedDate || '';
+    ui.transferPromiseNote.value = row?.promiseNote || '';
+    ui.transferStatus.value = row?.status || 'WAITING_FOR_PLACE';
+    ui.transferCompletedDate.value = row?.completedDate || '';
+    ui.transferComment.value = row?.comment || '';
+    ui.transferDialogMessage.textContent = '';
+    updateTransferCompletedDateState();
+    ui.transferDialog.showModal();
+    (row ? ui.transferReason : ui.transferStudentSearch).focus();
+}
+
+async function saveTransfer(event) {
+    event.preventDefault();
+    const id = ui.transferId.value;
+    ui.transferDialogMessage.textContent = 'Сохраняю…';
+    try {
+        const data = await api(id ? `/api/contingent/transfers/${encodeURIComponent(id)}` : '/api/contingent/transfers', {
+            method: id ? 'PUT' : 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                studentId: Number(ui.transferStudent.value || 0),
+                targetClassName: ui.transferTargetClass.value,
+                requestDate: ui.transferRequestDate.value,
+                reason: ui.transferReason.value,
+                promisedDate: ui.transferPromisedDate.value || null,
+                promiseNote: ui.transferPromiseNote.value,
+                status: ui.transferStatus.value,
+                completedDate: ui.transferCompletedDate.value || null,
+                comment: ui.transferComment.value
+            })
+        });
+        ui.transferDialog.close();
+        renderTransferOverview(data);
+        ui.transferMessage.textContent = id
+            ? 'Заявление обновлено, изменение записано в историю.'
+            : 'Заявление зарегистрировано и добавлено в зону ожидания.';
+    } catch (error) {
+        ui.transferDialogMessage.textContent = `Ошибка: ${error.message}`;
     }
 }
 
@@ -2583,12 +2814,35 @@ ui.tabs.forEach((tab) => tab.addEventListener('click', () => {
     if (tabName === 'roles') {
         refreshAdmissionRoles().catch(() => { });
     }
+    if (tabName === 'transfers') {
+        refreshTransfers().catch(() => { });
+    }
 }));
 
 window.addEventListener('hashchange', () => {
     const requestedTab = String(window.location.hash || '').toLowerCase().replace(/^#/, '');
-    const tab = [...ui.tabs].find((item) => item.dataset.contingentTab === requestedTab && !item.hidden);
+    const tab = [...ui.tabs].find((item) => item.dataset.contingentTab === requestedTab
+        && !item.hidden && item.style.display !== 'none');
     tab?.click();
+});
+
+ui.transferRefreshBtn?.addEventListener('click', () => refreshTransfers().catch(() => { }));
+ui.transferAddBtn?.addEventListener('click', () => openTransferDialog());
+ui.transferFilter?.addEventListener('change', renderTransferRows);
+ui.transferStudentSearch?.addEventListener('input', () => {
+    renderTransferStudentOptions(ui.transferStudentSearch.value);
+    updateTransferClassOptions();
+});
+ui.transferStudent?.addEventListener('change', () => updateTransferClassOptions());
+ui.transferStatus?.addEventListener('change', updateTransferCompletedDateState);
+ui.transferForm?.addEventListener('submit', saveTransfer);
+ui.transferDialogClose?.addEventListener('click', () => ui.transferDialog.close());
+ui.transferCancelBtn?.addEventListener('click', () => ui.transferDialog.close());
+ui.transferBody?.addEventListener('click', (event) => {
+    const button = event.target.closest('[data-student-transfer-edit]');
+    if (!button) return;
+    const row = (currentTransferData.requests || []).find((item) => Number(item.id) === Number(button.dataset.studentTransferEdit));
+    if (row) openTransferDialog(row);
 });
 
 ui.admissionRefreshBtn?.addEventListener('click', () => refreshAdmissions().catch(() => { }));
@@ -2917,7 +3171,7 @@ ui.supportRegisterTable?.addEventListener('click', (event) => {
         }
 
         const hash = String(window.location.hash || '').toLowerCase();
-        const requestedTab = ['#import', '#mismatches', '#manual', '#support', '#nosologies', '#stats', '#admissions', '#roles'].includes(hash)
+        const requestedTab = ['#import', '#mismatches', '#manual', '#support', '#nosologies', '#stats', '#admissions', '#transfers', '#roles'].includes(hash)
             ? hash.slice(1)
             : defaultTab;
         const permissions = contingentPermissions();
@@ -2925,6 +3179,7 @@ ui.supportRegisterTable?.addEventListener('click', (event) => {
             || (requestedTab === 'manual' && permissions.canManualView)
             || ((requestedTab === 'support' || requestedTab === 'nosologies') && permissions.canSupportView)
             || (requestedTab === 'admissions' && permissions.canAdmissionView)
+            || (requestedTab === 'transfers' && permissions.canTransferView)
             || (requestedTab === 'roles' && permissions.canAdmissionRolesView)
             || (requestedTab === 'stats' && permissions.canStatsView)
             ? requestedTab
@@ -2961,6 +3216,9 @@ ui.supportRegisterTable?.addEventListener('click', (event) => {
         }
         if (finalTab === 'roles') {
             await refreshAdmissionRoles();
+        }
+        if (finalTab === 'transfers') {
+            await refreshTransfers();
         }
     } catch (error) {
         printImportResult({ error: error.message });

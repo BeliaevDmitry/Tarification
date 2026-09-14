@@ -41,6 +41,7 @@ class PermissionStructureTest {
         assertTrue(script.contains("key: 'TEACHERS_DISMISSALS'"));
         assertTrue(script.contains("key: 'TEACHERS_MCKO'"));
         assertTrue(script.contains("key: 'TEACHERS_TIME_OFF'"));
+        assertTrue(script.contains("key: 'CONTINGENT_CLASS_TRANSFERS'"));
         assertTrue(script.contains("key: 'VSOKO_MCKO'"));
         assertTrue(script.contains("label: 'Качество образования'"));
         assertTrue(script.contains("key: 'LOAD_SALARY'"));

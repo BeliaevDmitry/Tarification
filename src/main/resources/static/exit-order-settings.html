@@ -11,12 +11,16 @@
     <p class="muted">Справочники выпадающих списков и маршрут согласования.</p></div>
     <a class="button-link secondary" href="/exit-orders.html">← К приказам</a></div><nav class="page-nav"></nav></header>
   <form id="exit-settings-form" class="card">
-    <section><h2>Согласование и ответственный заместитель</h2>
+    <section><h2>Согласование и должностные лица приказа</h2>
       <div class="exit-constructor-grid">
         <label>Кто согласовывает<select id="exit-settings-approval"><option value="ORGANIZATIONAL_BUILDING">Руководитель организационного корпуса</option>
           <option value="PHYSICAL_SITE">Руководитель фактической площадки</option><option value="BOTH">Руководитель корпуса или площадки</option></select></label>
+        <label>Директор<select id="exit-settings-director"></select></label>
         <label>Заместитель директора<select id="exit-settings-deputy"></select></label>
+        <label>Специалист по охране труда<select id="exit-settings-occupational-safety"></select></label>
+        <label>Специалист по безопасности<select id="exit-settings-security"></select></label>
       </div>
+      <p class="muted">Выбранные сотрудники автоматически подставляются в текст и подпись нового приказа.</p>
     </section>
     <section class="exit-builder-section"><h2>Справочники конструктора</h2>
       <p class="muted">Каждый вариант вводится с новой строки. Порядок строк станет порядком вариантов в списке.</p>
