@@ -4987,6 +4987,14 @@ dialog {
     font-weight: 800;
 }
 
+.student-transfer-status-waiting_for_place td {
+    background: #fffbeb;
+}
+
+.student-transfer-status-waiting_for_place td:first-child {
+    border-left: 5px solid #d97706;
+}
+
 .student-transfer-status-promised .student-transfer-status,
 .student-transfer-status-approved .student-transfer-status {
     background: #eff6ff;
@@ -5066,5 +5074,273 @@ dialog {
 
     .student-transfer-wide {
         grid-column: auto;
+    }
+}
+
+/* Нагрузка по корпусам: весь корпус виден без горизонтальной прокрутки страницы и таблицы. */
+.load-page .container {
+    max-width: none;
+    padding: 10px;
+}
+
+.load-page .app-shell-header {
+    padding: 10px 12px;
+    margin-bottom: 8px;
+}
+
+.load-page .app-workspace-layout {
+    flex: 1 1 auto;
+    min-height: 0;
+    grid-template-columns: 132px minmax(0, 1fr);
+    gap: 8px;
+}
+
+.load-page .app-workspace-layout.app-sidebar-collapsed {
+    grid-template-columns: 38px minmax(0, 1fr);
+}
+
+.load-page .app-workspace-content {
+    min-height: 0;
+    gap: 6px;
+}
+
+.load-page .app-section-sidebar {
+    position: relative;
+    top: auto;
+    max-height: 100%;
+    margin: 0;
+    padding: 8px 6px;
+    overflow-x: hidden;
+}
+
+.load-page .app-section-sidebar h2 {
+    margin: 8px 3px 10px;
+    font-size: .88rem;
+    line-height: 1.15;
+}
+
+.load-page .app-sidebar-home {
+    padding: 2px 3px;
+    font-size: .78rem;
+}
+
+.load-page .app-sidebar-group {
+    gap: 2px;
+    margin-top: 8px;
+}
+
+.load-page .app-sidebar-group h3 {
+    margin: 0 3px 3px;
+    font-size: .61rem;
+    line-height: 1.1;
+}
+
+.load-page .app-sidebar-link {
+    padding: 5px 6px;
+    font-size: .72rem;
+    line-height: 1.12;
+    overflow-wrap: anywhere;
+}
+
+.app-sidebar-toggle {
+    position: absolute;
+    top: 6px;
+    right: 5px;
+    width: 27px;
+    min-width: 27px;
+    height: 27px;
+    padding: 0;
+    font-size: 18px;
+    line-height: 1;
+}
+
+.load-page .app-workspace-layout.app-sidebar-collapsed .app-section-sidebar > :not(.app-sidebar-toggle) {
+    display: none;
+}
+
+.load-page .app-workspace-layout.app-sidebar-collapsed .app-sidebar-toggle {
+    right: 5px;
+}
+
+.load-page .load-toolbar {
+    margin-bottom: 0;
+    padding: 8px 10px;
+}
+
+.load-page .load-main-row {
+    margin-bottom: 4px;
+    gap: 5px;
+}
+
+.load-page .building-select {
+    flex: 1 1 220px;
+    min-width: 150px;
+    max-width: 420px;
+}
+
+.load-page .card[data-load-pane="distribution"][data-load-edit-area="true"] {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+}
+
+.load-page .card[data-load-pane="distribution"][data-load-edit-area="true"] .sheet-wrap {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+}
+
+.load-page #building-load-table {
+    --load-subject-col-width: 108px;
+    --load-teacher-col-width: 148px;
+    --load-subject-hours-col-width: 50px;
+    --load-building-hours-col-width: 54px;
+    --load-complex-hours-col-width: 54px;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    table-layout: fixed;
+    margin: 0;
+}
+
+.load-page #building-load-table th,
+.load-page #building-load-table td {
+    padding: 3px 4px;
+    font-size: 10.5px;
+    line-height: 1.12;
+    overflow: hidden;
+}
+
+.load-page #building-load-table tbody td:nth-child(n+6),
+.load-page #building-load-table thead tr.load-class-head th {
+    width: auto;
+    min-width: 0;
+    max-width: none;
+    padding: 2px;
+    text-align: center;
+}
+
+.load-page #building-load-table tbody td:nth-child(3),
+.load-page #building-load-table tbody td:nth-child(4),
+.load-page #building-load-table tbody td:nth-child(5) {
+    padding-inline: 2px;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.load-page #building-load-table input,
+.load-page #building-load-table input[list],
+.load-page #building-load-table select,
+.load-page #building-load-table .teacher-input {
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    padding: 4px 3px;
+    font-size: 10px;
+}
+
+.load-page #building-load-table .subject-cell {
+    gap: 3px;
+}
+
+.load-page #building-load-table .inline-plus {
+    flex-basis: 20px;
+    width: 20px;
+    min-width: 20px;
+    height: 20px;
+    min-height: 20px;
+    font-size: 15px;
+}
+
+.load-page #building-load-table .hour-pill {
+    display: block;
+    width: 100%;
+    min-width: 0;
+    max-width: 100%;
+    padding: 4px 1px;
+    border-radius: 5px;
+    font-size: 9.5px;
+    line-height: 1;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: clip;
+}
+
+.load-page #building-load-table .class-sort-btn {
+    text-align: center;
+    font-size: 9.5px;
+    line-height: 1;
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+.load-page #building-load-table .teacher-hours,
+.load-page #building-load-table .dismissal-note,
+.load-page #building-load-table .planned-dismissal-note,
+.load-page #building-load-table .mcko-load-ok,
+.load-page #building-load-table .mcko-load-missing,
+.load-page #building-load-table .mcko-load-warning {
+    margin-top: 2px;
+    font-size: 8.5px;
+    line-height: 1.05;
+    white-space: normal;
+}
+
+.load-page #building-load-table .load-head-actions {
+    justify-content: center;
+    gap: 4px;
+    font-size: 9px;
+}
+
+.load-page #building-load-table .head-action-btn {
+    padding: 3px 5px;
+    font-size: 9px;
+}
+
+.load-page #building-load-table.load-many-classes th,
+.load-page #building-load-table.load-many-classes td {
+    font-size: 9.5px;
+}
+
+.load-page #building-load-table.load-many-classes .hour-pill,
+.load-page #building-load-table.load-many-classes .class-sort-btn {
+    font-size: 8.5px;
+}
+
+.load-page #building-load-table.load-very-many-classes .hour-pill,
+.load-page #building-load-table.load-very-many-classes .class-sort-btn {
+    font-size: 7.5px;
+    letter-spacing: -.02em;
+}
+
+@media (max-width: 1100px) {
+    .load-page .app-workspace-layout {
+        grid-template-columns: 105px minmax(0, 1fr);
+    }
+
+    .load-page .app-workspace-layout.app-sidebar-collapsed {
+        grid-template-columns: 36px minmax(0, 1fr);
+    }
+
+    .load-page #building-load-table {
+        --load-subject-col-width: 92px;
+        --load-teacher-col-width: 126px;
+        --load-subject-hours-col-width: 45px;
+        --load-building-hours-col-width: 48px;
+        --load-complex-hours-col-width: 48px;
+    }
+}
+
+@media (max-width: 900px) {
+    .load-page .app-workspace-layout {
+        grid-template-columns: minmax(0, 1fr);
+    }
+
+    .load-page .app-section-sidebar {
+        max-height: 150px;
+    }
+
+    .load-page .app-workspace-layout.app-sidebar-collapsed .app-section-sidebar {
+        min-height: 36px;
     }
 }

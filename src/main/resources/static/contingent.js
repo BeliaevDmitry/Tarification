@@ -711,13 +711,13 @@ async function downloadCustomContingent() {
 }
 
 const studentTransferStatusLabel = (value) => ({
-    WAITING_FOR_PLACE: 'Ожидает свободное место',
+    WAITING_FOR_PLACE: 'Зона ожидания',
     PROMISED: 'Перевод обещан',
     APPROVED: 'Перевод согласован',
     TRANSFERRED: 'Переведён',
     DECLINED: 'Отказано',
     WITHDRAWN: 'Заявление отозвано'
-}[value] || value || 'Ожидает свободное место');
+}[value] || value || 'Зона ожидания');
 
 function localIsoDate() {
     const value = new Date();
@@ -738,7 +738,7 @@ function renderTransferOverview(data) {
     ui.transferAddBtn.hidden = !currentTransferData.access?.canEdit;
     const totals = [
         ['Всего заявлений', currentTransferData.total || 0, 'total'],
-        ['Ожидают решения', currentTransferData.waiting || 0, 'active'],
+        ['В зоне ожидания', currentTransferData.waiting || 0, 'active'],
         ['Переведено', currentTransferData.transferred || 0, 'enrolled'],
         ['Закрыто без перевода', currentTransferData.closed || 0, 'refused']
     ];
@@ -903,7 +903,9 @@ async function saveTransfer(event) {
         });
         ui.transferDialog.close();
         renderTransferOverview(data);
-        ui.transferMessage.textContent = id ? 'Заявление обновлено, изменение записано в историю.' : 'Заявление зарегистрировано.';
+        ui.transferMessage.textContent = id
+            ? 'Заявление обновлено, изменение записано в историю.'
+            : 'Заявление зарегистрировано и добавлено в зону ожидания.';
     } catch (error) {
         ui.transferDialogMessage.textContent = `Ошибка: ${error.message}`;
     }

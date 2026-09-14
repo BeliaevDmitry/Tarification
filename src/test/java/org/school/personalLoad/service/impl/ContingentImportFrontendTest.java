@@ -148,8 +148,10 @@ class ContingentImportFrontendTest {
         assertTrue(html.contains("id=\"student-transfer-promised-date\""));
         assertTrue(html.contains("id=\"student-transfer-promise-note\""));
         assertTrue(html.contains("id=\"student-transfer-status\""));
+        assertTrue(html.contains("<option value=\"WAITING_FOR_PLACE\">Зона ожидания</option>"));
         assertTrue(pageScript.contains("/api/contingent/transfers"));
-        assertTrue(pageScript.contains("Ожидает свободное место"));
+        assertTrue(pageScript.contains("WAITING_FOR_PLACE: 'Зона ожидания'"));
+        assertTrue(pageScript.contains("Заявление зарегистрировано и добавлено в зону ожидания"));
         assertTrue(pageScript.contains("row.promiseNote"));
         assertTrue(pageScript.contains("row.history"));
         assertTrue(authScript.contains("#transfers', tab: 'CONTINGENT_CLASS_TRANSFERS'"));

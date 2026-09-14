@@ -20,7 +20,7 @@
             <a class="nav-link nav-home-link" href="/" title="Главная" aria-label="Главная">🏠</a>
             <button type="button" class="nav-link active" data-contingent-tab="stats">Численность</button>
             <button type="button" class="nav-link" data-contingent-tab="admissions">Приём</button>
-            <button type="button" class="nav-link" data-contingent-tab="transfers">Переводы между классами</button>
+            <button type="button" class="nav-link" data-contingent-tab="transfers">Перевод между классами</button>
             <button type="button" class="nav-link" data-contingent-tab="roles">Роли приёма</button>
             <button type="button" class="nav-link" data-contingent-tab="support">Справки</button>
             <button type="button" class="nav-link" data-contingent-tab="nosologies">Справочник нозологий</button>
@@ -206,8 +206,8 @@
     <section class="card" data-contingent-pane="transfers" style="display:none;">
         <div class="admission-heading">
             <div>
-                <h2>Переводы между классами</h2>
-                <p class="muted">Заявления на переход внутри параллели, ожидание свободного места и история договорённостей.</p>
+                <h2>Перевод между классами</h2>
+                <p class="muted">Только для детей из действующего контингента: желаемый класс, зона ожидания и комментарий.</p>
             </div>
             <div class="row controls-row">
                 <button id="student-transfer-refresh-btn" type="button" class="secondary">Обновить</button>
@@ -220,7 +220,7 @@
             <label>Показывать:
                 <select id="student-transfer-filter">
                     <option value="ACTIVE">Ожидают решения</option>
-                    <option value="WAITING">Только ожидают место</option>
+                    <option value="WAITING">Зона ожидания</option>
                     <option value="TRANSFERRED">Переведённые</option>
                     <option value="CLOSED">Отказанные и отозванные</option>
                     <option value="ALL">Все заявления</option>
@@ -275,7 +275,7 @@
                 </label>
                 <label>Статус
                     <select id="student-transfer-status" required>
-                        <option value="WAITING_FOR_PLACE">Ожидает свободное место</option>
+                        <option value="WAITING_FOR_PLACE">Зона ожидания</option>
                         <option value="PROMISED">Перевод обещан</option>
                         <option value="APPROVED">Перевод согласован</option>
                         <option value="TRANSFERRED">Переведён</option>
@@ -296,7 +296,8 @@
                     <textarea id="student-transfer-reason" rows="3" required></textarea>
                 </label>
                 <label class="student-transfer-wide">Комментарий
-                    <textarea id="student-transfer-comment" rows="3"></textarea>
+                    <textarea id="student-transfer-comment" rows="3"
+                              placeholder="Зафиксируйте договорённости и причину нахождения в зоне ожидания"></textarea>
                 </label>
             </div>
             <p id="student-transfer-dialog-message" class="muted" aria-live="polite"></p>

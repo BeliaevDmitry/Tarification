@@ -125,7 +125,7 @@ const NAV_SECTIONS = {
         items: [
             { group: 'Контингент', path: '/contingent.html#stats', tab: 'CONTINGENT_STATS', label: 'Численность и списки' },
             { group: 'Контингент', path: '/contingent.html#admissions', tab: 'CONTINGENT_ADMISSION', label: 'Приём' },
-            { group: 'Контингент', path: '/contingent.html#transfers', tab: 'CONTINGENT_CLASS_TRANSFERS', label: 'Переводы между классами' },
+            { group: 'Контингент', path: '/contingent.html#transfers', tab: 'CONTINGENT_CLASS_TRANSFERS', label: 'Перевод между классами' },
             { group: 'Контингент', path: '/contingent.html#roles', tab: 'CONTINGENT_ADMISSION_ROLES', label: 'Роли приёма' },
             { group: 'Обмен данными', path: '/contingent.html#import', tab: 'CONTINGENT_IMPORT', label: 'Импорт' },
             { group: 'Обмен данными', path: '/contingent.html#manual', tab: 'CONTINGENT_STATS', label: 'Ручная правка' },
@@ -772,6 +772,29 @@ function enrichNavigation(currentUser) {
     const title = document.createElement('h2');
     title.textContent = section.title;
     sidebar.appendChild(title);
+
+    if (document.body.classList.contains('load-page')) {
+        const compactKey = 'tarification.load.sidebarCollapsed';
+        const toggle = document.createElement('button');
+        toggle.type = 'button';
+        toggle.className = 'app-sidebar-toggle';
+        const saved = localStorage.getItem(compactKey);
+        const initiallyCollapsed = saved === '1' || (saved == null && window.innerWidth < 1280);
+        const setCollapsed = (collapsed) => {
+            layout.classList.toggle('app-sidebar-collapsed', collapsed);
+            toggle.textContent = collapsed ? '»' : '«';
+            toggle.title = collapsed ? 'Показать меню' : 'Свернуть меню';
+            toggle.setAttribute('aria-label', toggle.title);
+            toggle.setAttribute('aria-expanded', String(!collapsed));
+        };
+        setCollapsed(initiallyCollapsed);
+        toggle.addEventListener('click', () => {
+            const collapsed = !layout.classList.contains('app-sidebar-collapsed');
+            localStorage.setItem(compactKey, collapsed ? '1' : '0');
+            setCollapsed(collapsed);
+        });
+        sidebar.appendChild(toggle);
+    }
 
     const grouped = new Map();
     navItems.forEach((item) => {

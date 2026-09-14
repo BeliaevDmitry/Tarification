@@ -42,4 +42,23 @@ class LoadViewOptionsFrontendTest {
         assertTrue(authJs.contains("function canExportCurrentPage"));
         assertTrue(authJs.contains("[data-requires-export]"));
     }
+
+    @Test
+    void loadPageFitsViewportAndOffersCompactSidebar() throws Exception {
+        String html = Files.readString(Path.of("src/main/resources/static/load.html"));
+        String js = Files.readString(Path.of("src/main/resources/static/load.js"));
+        String authJs = Files.readString(Path.of("src/main/resources/static/auth.js"));
+        String css = Files.readString(Path.of("src/main/resources/static/styles.css"));
+
+        assertTrue(html.contains("Таблица автоматически уплотняется по ширине экрана"));
+        assertTrue(js.contains("load-many-classes"));
+        assertTrue(js.contains("load-very-many-classes"));
+        assertTrue(authJs.contains("tarification.load.sidebarCollapsed"));
+        assertTrue(authJs.contains("app-sidebar-toggle"));
+        assertTrue(css.contains("grid-template-columns: 132px minmax(0, 1fr)"));
+        assertTrue(css.contains(".load-page #building-load-table"));
+        assertTrue(css.contains("table-layout: fixed"));
+        assertTrue(css.contains(".load-page .card[data-load-pane=\"distribution\"][data-load-edit-area=\"true\"] .sheet-wrap"));
+        assertTrue(css.contains("overflow-x: hidden"));
+    }
 }

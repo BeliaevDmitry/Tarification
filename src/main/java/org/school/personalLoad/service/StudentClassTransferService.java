@@ -186,9 +186,9 @@ public class StudentClassTransferService {
     }
 
     private String statusLabel(StudentClassTransferStatus status) {
-        if (status == null) return "ожидает место";
+        if (status == null) return "зона ожидания";
         return switch (status) {
-            case WAITING_FOR_PLACE -> "ожидает место";
+            case WAITING_FOR_PLACE -> "зона ожидания";
             case PROMISED -> "перевод обещан";
             case APPROVED -> "перевод согласован";
             case TRANSFERRED -> "переведён";

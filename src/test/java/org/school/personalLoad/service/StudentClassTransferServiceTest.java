@@ -100,6 +100,7 @@ class StudentClassTransferServiceTest {
         assertEquals("7-А", created.getRequests().get(0).getFromClassName());
         assertEquals("7-Б", created.getRequests().get(0).getTargetClassName());
         assertEquals(StudentClassTransferStatus.WAITING_FOR_PLACE, created.getRequests().get(0).getStatus());
+        assertEquals("Ждём место после окончания четверти", created.getRequests().get(0).getComment());
         assertEquals(1, created.getWaiting());
         assertEquals(1, created.getRequests().get(0).getHistory().size());
 
@@ -130,7 +131,7 @@ class StudentClassTransferServiceTest {
         request.setTargetClassName(targetClass);
         request.setRequestDate(LocalDate.of(2026, 9, 13));
         request.setReason("Просьба родителей");
-        request.setStatus(StudentClassTransferStatus.WAITING_FOR_PLACE);
+        request.setComment("Ждём место после окончания четверти");
         return request;
     }
 
