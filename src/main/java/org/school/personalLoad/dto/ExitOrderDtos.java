@@ -69,6 +69,9 @@ public final class ExitOrderDtos {
 
     public record SettingsRequest(ProbeOrderApprovalMode approvalMode,
                                   Long deputyDirectorTeacherId,
+                                  Long directorTeacherId,
+                                  Long occupationalSafetyTeacherId,
+                                  Long securitySpecialistTeacherId,
                                   Map<ExitOrderDictionaryType, List<String>> dictionaries) {
     }
 
@@ -76,6 +79,12 @@ public final class ExitOrderDtos {
                                String approvalModeLabel,
                                Long deputyDirectorTeacherId,
                                String deputyDirectorName,
+                               Long directorTeacherId,
+                               String directorName,
+                               Long occupationalSafetyTeacherId,
+                               String occupationalSafetyName,
+                               Long securitySpecialistTeacherId,
+                               String securitySpecialistName,
                                Map<ExitOrderDictionaryType, List<String>> dictionaries,
                                boolean canEdit) {
     }
@@ -136,7 +145,9 @@ public final class ExitOrderDtos {
                             boolean canGenerate,
                             boolean canRelease,
                             boolean canUploadScan,
-                            boolean canMarkAttendance) {
+                            boolean canMarkAttendance,
+                            boolean archived,
+                            boolean canDelete) {
     }
 
     public record ClassSummary(String className,

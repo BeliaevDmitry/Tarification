@@ -33,6 +33,13 @@ public class ExitOrderServiceImpl implements ExitOrderService {
     private static final String DEFAULT_DEPUTY_DATIVE = "Власовой Юлии Сергеевне";
     private static final String DEFAULT_DEPUTY_ACCUSATIVE = "Власову Юлию Сергеевну";
     private static final String DEFAULT_DEPUTY_INITIALS = "Власова Ю.С.";
+    private static final String DEFAULT_DIRECTOR_NAME = "Жданова Ирина Дмитриевна";
+    private static final String DEFAULT_DIRECTOR_DATIVE = "Ждановой Ирине Дмитриевне";
+    private static final String DEFAULT_DIRECTOR_ACCUSATIVE = "Жданову Ирину Дмитриевну";
+    private static final String DEFAULT_DIRECTOR_INITIALS = "Жданова И.Д.";
+    private static final String DEFAULT_OCCUPATIONAL_SAFETY_NAME = "Белякова И.В.";
+    private static final String DEFAULT_OCCUPATIONAL_SAFETY_DATIVE = "Беляковой И.В.";
+    private static final String DEFAULT_SECURITY_NAME = "Коваленко А.А.";
 
     private final ExitOrderRepository orderRepository;
     private final ExitOrderApprovalRepository approvalRepository;
@@ -82,7 +89,8 @@ public class ExitOrderServiceImpl implements ExitOrderService {
                     entry.getNumberSchoolBuilding(), building.getName(), building.getAddress(), suggested, students);
         }).toList();
 
-        List<ExitOrderDtos.StaffOption> staff = activeStaff().stream().map(this::staffOption).toList();
+        List<TeacherDirectoryEntry> active = activeStaff();
+        List<ExitOrderDtos.StaffOption> staff = active.stream().map(this::staffOption).toList();
         List<Long> suggestedClassIds = classes.stream().filter(ExitOrderDtos.ClassOption::suggested)
                 .map(ExitOrderDtos.ClassOption::id).toList();
         String suggestedGatheringPlace = classes.stream().filter(ExitOrderDtos.ClassOption::suggested)
@@ -97,8 +105,10 @@ public class ExitOrderServiceImpl implements ExitOrderService {
         dictionaries.put(ExitOrderDictionaryType.GATHERING_PLACE,
                 gatheringPlaces.stream().distinct().toList());
 
+        ExitOrderSettings settings = settingsRepository.findById(ExitOrderSettings.DEFAULT_ID).orElse(null);
+        TeacherDirectoryEntry defaultSigner = effectiveDirector(settings, active);
         return new ExitOrderDtos.ReferenceData(classes, staff, staff, dictionaries, suggestedClassIds,
-                currentTeacherId, currentTeacherId, suggestedGatheringPlace);
+                currentTeacherId, defaultSigner == null ? null : defaultSigner.getId(), suggestedGatheringPlace);
     }
 
     @Override
@@ -197,7 +207,12 @@ public class ExitOrderServiceImpl implements ExitOrderService {
         if (request == null || request.orderDate() == null) {
             throw new IllegalArgumentException("Укажите дату приказа");
         }
-        TeacherDirectoryEntry signer = staff(request.signerTeacherId(), "Выберите подписанта приказа");
+        TeacherDirectoryEntry signer = request.signerTeacherId() == null
+                ? effectiveDirector(settingsRepository.findById(ExitOrderSettings.DEFAULT_ID).orElse(null), activeStaff())
+                : staff(request.signerTeacherId(), "Выберите подписанта приказа");
+        if (signer == null) {
+            throw new IllegalArgumentException("Выберите директора в настройках приказов или подписанта приказа");
+        }
         order.setOrderNumber(requireText(request.orderNumber(), "Укажите номер приказа"));
         order.setOrderDate(request.orderDate());
         order.setSigner(signer);
@@ -270,8 +285,8 @@ public class ExitOrderServiceImpl implements ExitOrderService {
     @Override
     @Transactional(readOnly = true)
     public ProbeOrderDtos.FilePayload signedScan(Long id, SessionUser user) {
-        ensureExport(user);
-        requireOrder(id);
+        ExitOrder order = requireOrder(id);
+        ensureCanDownloadScan(user, order);
         ExitOrderScan scan = scanRepository.findByOrder_Id(id)
                 .orElseThrow(() -> new IllegalStateException("Скан подписанного приказа не загружен"));
         return new ProbeOrderDtos.FilePayload(scan.getFileName(), scan.getContentType(), scan.getContent());
@@ -303,14 +318,27 @@ public class ExitOrderServiceImpl implements ExitOrderService {
 
     @Override
     @Transactional
+    public void delete(Long id, SessionUser user) {
+        ensureCanDelete(user);
+        ExitOrder order = requireOrder(id);
+        scanRepository.deleteByOrder_Id(id);
+        documentRepository.deleteByOrder_Id(id);
+        approvalRepository.deleteAllByOrder_Id(id);
+        orderRepository.delete(order);
+    }
+
+    @Override
+    @Transactional
     public ExitOrderDtos.SettingsView settings(String academicYear, SessionUser user) {
         ensureDocumentsView(user);
         ensureDictionaryDefaults(academicYear);
         ExitOrderSettings settings = settingsRepository.findById(ExitOrderSettings.DEFAULT_ID).orElse(null);
         ProbeOrderApprovalMode mode = settings == null ? ProbeOrderApprovalMode.ORGANIZATIONAL_BUILDING
                 : settings.getApprovalMode();
-        TeacherDirectoryEntry deputy = effectiveDeputy(settings, activeStaff());
-        return settingsView(mode, deputy, dictionaryValues(), canEditSettings(user));
+        List<TeacherDirectoryEntry> active = activeStaff();
+        return settingsView(mode, effectiveDirector(settings, active), effectiveDeputy(settings, active),
+                effectiveOccupationalSafety(settings, active), effectiveSecuritySpecialist(settings, active),
+                dictionaryValues(), canEditSettings(user));
     }
 
     @Override
@@ -326,8 +354,17 @@ public class ExitOrderServiceImpl implements ExitOrderService {
                 .orElseGet(ExitOrderSettings::new);
         TeacherDirectoryEntry deputy = request.deputyDirectorTeacherId() == null ? null
                 : staff(request.deputyDirectorTeacherId(), "Заместитель директора не найден");
+        TeacherDirectoryEntry director = request.directorTeacherId() == null ? null
+                : staff(request.directorTeacherId(), "Директор не найден");
+        TeacherDirectoryEntry occupationalSafety = request.occupationalSafetyTeacherId() == null ? null
+                : staff(request.occupationalSafetyTeacherId(), "Специалист по охране труда не найден");
+        TeacherDirectoryEntry security = request.securitySpecialistTeacherId() == null ? null
+                : staff(request.securitySpecialistTeacherId(), "Специалист по безопасности не найден");
         settings.setApprovalMode(request.approvalMode());
         settings.setDeputyDirectorTeacherId(deputy == null ? null : deputy.getId());
+        settings.setDirectorTeacherId(director == null ? null : director.getId());
+        settings.setOccupationalSafetyTeacherId(occupationalSafety == null ? null : occupationalSafety.getId());
+        settings.setSecuritySpecialistTeacherId(security == null ? null : security.getId());
         settings.setUpdatedAt(LocalDateTime.now());
         settings.setUpdatedBy(firstNotBlank(user.getFullName(), user.getUsername(), "SYSTEM"));
         settingsRepository.save(settings);
@@ -339,8 +376,10 @@ public class ExitOrderServiceImpl implements ExitOrderService {
         }
         ensureDictionaryDefaults(academicYear);
         refreshPendingApprovalSummaries(request.approvalMode());
-        return settingsView(settings.getApprovalMode(), effectiveDeputy(settings, activeStaff()),
-                dictionaryValues(), true);
+        List<TeacherDirectoryEntry> active = activeStaff();
+        return settingsView(settings.getApprovalMode(), effectiveDirector(settings, active),
+                effectiveDeputy(settings, active), effectiveOccupationalSafety(settings, active),
+                effectiveSecuritySpecialist(settings, active), dictionaryValues(), true);
     }
 
     @Override
@@ -562,13 +601,23 @@ public class ExitOrderServiceImpl implements ExitOrderService {
                 order.getStatus(), mode, approval.views(), approval.complete(), order.getRequestedBy(), order.getRequestedAt(),
                 order.getOrderNumber(), order.getOrderDate(), staffOption(order.getSigner()), order.getSignerPosition(),
                 hasDocument && user.canExportTab(AppTab.DOCUMENTS_EXIT_ORDERS),
-                hasScan && user.canExportTab(AppTab.DOCUMENTS_EXIT_ORDERS), order.getAttendanceMarkedAt(), participants,
+                hasScan && canDownloadScan(user, order), order.getAttendanceMarkedAt(), participants,
                 editable, canAcknowledge(user, order, mode, savedApprovals),
                 leadership && documentsEdit && approval.complete() && !released,
                 leadership && documentsEdit && order.getStatus() == ProbeOrderStatus.GENERATED,
                 released && leadership && documentsEdit,
                 released && !order.getEventDate().isAfter(LocalDate.now())
-                        && ((leadership && documentsEdit) || (requester && requesterEdit)));
+                        && ((leadership && documentsEdit) || (requester && requesterEdit)),
+                isArchived(order), canDelete(user));
+    }
+
+    private boolean isArchived(ExitOrder order) {
+        if (order == null || order.getStatus() != ProbeOrderStatus.RELEASED || order.getEventDate() == null) {
+            return false;
+        }
+        LocalTime finishTime = order.getReturnTime() == null ? order.getEndTime() : order.getReturnTime();
+        if (finishTime == null) finishTime = LocalTime.MAX;
+        return LocalDateTime.of(order.getEventDate(), finishTime).isBefore(LocalDateTime.now());
     }
 
     private List<ApprovalTarget> approvalTargets(ExitOrder order, ProbeOrderApprovalMode mode) {
@@ -725,11 +774,19 @@ public class ExitOrderServiceImpl implements ExitOrderService {
     }
 
     private ExitOrderDtos.SettingsView settingsView(ProbeOrderApprovalMode mode,
+                                                     TeacherDirectoryEntry director,
                                                      TeacherDirectoryEntry deputy,
+                                                     TeacherDirectoryEntry occupationalSafety,
+                                                     TeacherDirectoryEntry security,
                                                      Map<ExitOrderDictionaryType, List<String>> dictionaries,
                                                      boolean canEdit) {
-        return new ExitOrderDtos.SettingsView(mode, approvalModeLabel(mode), deputy == null ? null : deputy.getId(),
-                deputy == null ? DEFAULT_DEPUTY_NAME : deputy.getFioTeacher(), dictionaries, canEdit);
+        return new ExitOrderDtos.SettingsView(mode, approvalModeLabel(mode),
+                deputy == null ? null : deputy.getId(), deputy == null ? DEFAULT_DEPUTY_NAME : deputy.getFioTeacher(),
+                director == null ? null : director.getId(), director == null ? DEFAULT_DIRECTOR_NAME : director.getFioTeacher(),
+                occupationalSafety == null ? null : occupationalSafety.getId(), occupationalSafety == null
+                ? DEFAULT_OCCUPATIONAL_SAFETY_NAME : occupationalSafety.getFioTeacher(),
+                security == null ? null : security.getId(), security == null
+                ? DEFAULT_SECURITY_NAME : security.getFioTeacher(), dictionaries, canEdit);
     }
 
     private ProbeOrderApprovalMode currentApprovalMode() {
@@ -758,23 +815,45 @@ public class ExitOrderServiceImpl implements ExitOrderService {
                 order.getGatheringTime(), order.getGatheringPlace(), order.getReturnTime(),
                 order.getSchoolBuilding().getManagerFio(), person(order.getPrimaryCompanion()),
                 person(order.getSecondaryCompanion()), additionalCompanions(order).stream().map(this::person).toList(),
-                person(order.getSigner()), order.getSignerPosition(), person(personnel.director()), personnel.deputy(),
-                personnel.executor(), participants, order.getPreamble(), "на мероприятие «" + order.getEventName() + "»");
+                person(order.getSigner()), order.getSignerPosition(), personnel.director(), personnel.deputy(),
+                personnel.occupationalSafety(), personnel.securitySpecialist(), personnel.executor(), participants,
+                order.getPreamble(), "на мероприятие «" + order.getEventName() + "»");
     }
 
     private DocumentPersonnel documentPersonnel(SessionUser user) {
         List<TeacherDirectoryEntry> active = activeStaff();
-        TeacherDirectoryEntry director = linkedRoleTeacher(UserRole.DIRECTOR, active);
-        if (director == null) director = active.stream().filter(item -> position(item).equals("директор")).findFirst().orElse(null);
         ExitOrderSettings settings = settingsRepository.findById(ExitOrderSettings.DEFAULT_ID).orElse(null);
+        TeacherDirectoryEntry director = effectiveDirector(settings, active);
         TeacherDirectoryEntry deputyTeacher = effectiveDeputy(settings, active);
+        TeacherDirectoryEntry occupationalSafetyTeacher = effectiveOccupationalSafety(settings, active);
+        TeacherDirectoryEntry securityTeacher = effectiveSecuritySpecialist(settings, active);
+        ProbeOrderDocumentService.PersonData directorPerson = director == null ? defaultDirector() : person(director);
         ProbeOrderDocumentService.PersonData deputy = deputyTeacher == null ? defaultDeputy() : person(deputyTeacher);
+        ProbeOrderDocumentService.PersonData occupationalSafety = occupationalSafetyTeacher == null
+                ? defaultOccupationalSafety() : person(occupationalSafetyTeacher);
+        ProbeOrderDocumentService.PersonData security = securityTeacher == null
+                ? defaultSecuritySpecialist() : person(securityTeacher);
         TeacherDirectoryEntry executorTeacher = teacherId(user) == null ? null
                 : teacherRepository.findById(teacherId(user)).orElse(null);
         ProbeOrderDocumentService.PersonData executor = executorTeacher == null
                 ? new ProbeOrderDocumentService.PersonData(null, user.getFullName(), user.getFullName(), user.getFullName(),
                 initials(user.getFullName()), user.getPhone()) : person(executorTeacher);
-        return new DocumentPersonnel(director, deputy, executor);
+        return new DocumentPersonnel(directorPerson, deputy, occupationalSafety, security, executor);
+    }
+
+    private TeacherDirectoryEntry effectiveDirector(ExitOrderSettings settings, List<TeacherDirectoryEntry> active) {
+        Long id = settings == null ? null : settings.getDirectorTeacherId();
+        if (id != null) {
+            TeacherDirectoryEntry configured = active.stream()
+                    .filter(item -> Objects.equals(item.getId(), id)).findFirst().orElse(null);
+            if (configured != null) return configured;
+        }
+        TeacherDirectoryEntry linked = linkedRoleTeacher(UserRole.DIRECTOR, active);
+        if (linked != null) return linked;
+        return active.stream().filter(item -> position(item).equals("директор")).findFirst()
+                .orElseGet(() -> active.stream()
+                        .filter(item -> normalizeName(item.getFioTeacher()).startsWith("жданова "))
+                        .findFirst().orElse(null));
     }
 
     private TeacherDirectoryEntry effectiveDeputy(ExitOrderSettings settings, List<TeacherDirectoryEntry> active) {
@@ -784,6 +863,34 @@ public class ExitOrderServiceImpl implements ExitOrderService {
             if (configured != null) return configured;
         }
         return active.stream().filter(item -> normalizeName(item.getFioTeacher()).startsWith("власова ")).findFirst().orElse(null);
+    }
+
+    private TeacherDirectoryEntry effectiveOccupationalSafety(ExitOrderSettings settings,
+                                                                List<TeacherDirectoryEntry> active) {
+        Long id = settings == null ? null : settings.getOccupationalSafetyTeacherId();
+        if (id != null) {
+            TeacherDirectoryEntry configured = active.stream()
+                    .filter(item -> Objects.equals(item.getId(), id)).findFirst().orElse(null);
+            if (configured != null) return configured;
+        }
+        return active.stream().filter(item -> position(item).contains("охране труда")).findFirst()
+                .orElseGet(() -> active.stream()
+                        .filter(item -> normalizeName(item.getFioTeacher()).startsWith("белякова "))
+                        .findFirst().orElse(null));
+    }
+
+    private TeacherDirectoryEntry effectiveSecuritySpecialist(ExitOrderSettings settings,
+                                                                List<TeacherDirectoryEntry> active) {
+        Long id = settings == null ? null : settings.getSecuritySpecialistTeacherId();
+        if (id != null) {
+            TeacherDirectoryEntry configured = active.stream()
+                    .filter(item -> Objects.equals(item.getId(), id)).findFirst().orElse(null);
+            if (configured != null) return configured;
+        }
+        return active.stream().filter(item -> position(item).contains("безопасност")).findFirst()
+                .orElseGet(() -> active.stream()
+                        .filter(item -> normalizeName(item.getFioTeacher()).startsWith("коваленко "))
+                        .findFirst().orElse(null));
     }
 
     private TeacherDirectoryEntry linkedRoleTeacher(UserRole role, List<TeacherDirectoryEntry> active) {
@@ -936,6 +1043,22 @@ public class ExitOrderServiceImpl implements ExitOrderService {
         }
     }
 
+    private ProbeOrderDocumentService.PersonData defaultDirector() {
+        return new ProbeOrderDocumentService.PersonData(null, DEFAULT_DIRECTOR_NAME, DEFAULT_DIRECTOR_DATIVE,
+                DEFAULT_DIRECTOR_ACCUSATIVE, DEFAULT_DIRECTOR_INITIALS, null);
+    }
+
+    private ProbeOrderDocumentService.PersonData defaultOccupationalSafety() {
+        return new ProbeOrderDocumentService.PersonData(null, DEFAULT_OCCUPATIONAL_SAFETY_NAME,
+                DEFAULT_OCCUPATIONAL_SAFETY_DATIVE, DEFAULT_OCCUPATIONAL_SAFETY_NAME,
+                DEFAULT_OCCUPATIONAL_SAFETY_NAME, null);
+    }
+
+    private ProbeOrderDocumentService.PersonData defaultSecuritySpecialist() {
+        return new ProbeOrderDocumentService.PersonData(null, DEFAULT_SECURITY_NAME, DEFAULT_SECURITY_NAME,
+                DEFAULT_SECURITY_NAME, DEFAULT_SECURITY_NAME, null);
+    }
+
     private void ensureCanManageReleased(SessionUser user, ExitOrder order) {
         boolean requester = user != null && Objects.equals(user.getId(), order.getRequestedByUserId());
         boolean allowed = user != null && ((isLeadership(user) && user.canEditTab(AppTab.DOCUMENTS_EXIT_ORDERS))
@@ -995,7 +1118,33 @@ public class ExitOrderServiceImpl implements ExitOrderService {
         }
     }
 
+    private void ensureCanDownloadScan(SessionUser user, ExitOrder order) {
+        if (!canDownloadScan(user, order)) {
+            throw new AuthExceptions.ForbiddenException("Нет права скачивать скан этого приказа на выход");
+        }
+    }
+
+    private boolean canDownloadScan(SessionUser user, ExitOrder order) {
+        if (user == null || order == null) return false;
+        boolean documentsExport = user.canViewTab(AppTab.DOCUMENTS_EXIT_ORDERS)
+                && user.canExportTab(AppTab.DOCUMENTS_EXIT_ORDERS);
+        boolean ownClassTeacherOrder = user.hasRole(UserRole.CLASS_TEACHER)
+                && Objects.equals(user.getId(), order.getRequestedByUserId())
+                && user.canViewTab(AppTab.CLASS_TEACHER_EXIT_ORDER_SUMMARY);
+        return documentsExport || ownClassTeacherOrder;
+    }
+
     private boolean canEditSettings(SessionUser user) {
+        return isLeadership(user) && user.canEditTab(AppTab.DOCUMENTS_EXIT_ORDERS);
+    }
+
+    private void ensureCanDelete(SessionUser user) {
+        if (!canDelete(user)) {
+            throw new AuthExceptions.ForbiddenException("Удалять приказы на выход могут директор и заместители директора");
+        }
+    }
+
+    private boolean canDelete(SessionUser user) {
         return isLeadership(user) && user.canEditTab(AppTab.DOCUMENTS_EXIT_ORDERS);
     }
 
@@ -1100,8 +1249,10 @@ public class ExitOrderServiceImpl implements ExitOrderService {
     private record ApprovalState(List<ApprovalTarget> targets, List<ExitOrderDtos.ApprovalView> views, boolean complete) {
     }
 
-    private record DocumentPersonnel(TeacherDirectoryEntry director,
+    private record DocumentPersonnel(ProbeOrderDocumentService.PersonData director,
                                      ProbeOrderDocumentService.PersonData deputy,
+                                     ProbeOrderDocumentService.PersonData occupationalSafety,
+                                     ProbeOrderDocumentService.PersonData securitySpecialist,
                                      ProbeOrderDocumentService.PersonData executor) {
     }
 

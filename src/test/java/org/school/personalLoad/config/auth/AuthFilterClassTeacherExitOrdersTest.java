@@ -30,6 +30,7 @@ class AuthFilterClassTeacherExitOrdersTest {
         assertTrue(filter("GET", "/class-teacher.html", user).chain.called);
         assertTrue(filter("GET", "/api/exit-orders/references", user).chain.called);
         assertTrue(filter("GET", "/api/exit-orders", user).chain.called);
+        assertTrue(filter("GET", "/api/exit-orders/15/scan", user).chain.called);
         assertTrue(filter("POST", "/api/exit-orders", user).chain.called);
     }
 

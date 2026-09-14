@@ -4,7 +4,9 @@ const exitState = {
     selectedStudents: new Set(),
     editingId: null,
     actionId: null,
-    autoGatheringPlace: ''
+    autoGatheringPlace: '',
+    showOtherClasses: false,
+    listView: 'active'
 };
 const exitClassTeacherWorkspace = document.body.dataset.exitWorkspace === 'class-teacher';
 let exitWorkspaceAccess = { create: false, summary: false };
@@ -19,11 +21,12 @@ const exitUi = {
     endTime: document.getElementById('exit-end-time'), venue: document.getElementById('exit-venue'),
     eventAddress: document.getElementById('exit-event-address'), gatheringTime: document.getElementById('exit-gathering-time'),
     gatheringPlace: document.getElementById('exit-gathering-place'), returnTime: document.getElementById('exit-return-time'),
-    classPicker: document.getElementById('exit-class-picker'), selectionSummary: document.getElementById('exit-selection-summary'),
+    classPicker: document.getElementById('exit-class-picker'), classHint: document.getElementById('exit-class-hint'),
+    selectionSummary: document.getElementById('exit-selection-summary'),
     buildingSuggestion: document.getElementById('exit-building-suggestion'), primary: document.getElementById('exit-primary-companion'),
     secondary: document.getElementById('exit-secondary-companion'), additional: document.getElementById('exit-additional-companions'),
     companionRule: document.getElementById('exit-companion-rule'), listCard: document.getElementById('exit-orders-list-card'),
-    listSummary: document.getElementById('exit-list-summary'),
+    listTitle: document.getElementById('exit-list-title'), listSummary: document.getElementById('exit-list-summary'),
     search: document.getElementById('exit-search'), status: document.getElementById('exit-status-filter'),
     body: document.getElementById('exit-orders-body'), generateDialog: document.getElementById('exit-generate-dialog'),
     generateForm: document.getElementById('exit-generate-form'), generateCaption: document.getElementById('exit-generate-caption'),
@@ -98,9 +101,9 @@ function prepareReferences() {
     renderClassPicker();
 }
 
-function groupedClasses() {
+function groupedClasses(classes = exitState.references.classes || []) {
     const groups = new Map();
-    (exitState.references.classes || []).forEach(item => {
+    classes.forEach(item => {
         const key = item.parallel == null ? 'Без параллели' : `${item.parallel} классы`;
         if (!groups.has(key)) groups.set(key, []);
         groups.get(key).push(item);
@@ -108,17 +111,38 @@ function groupedClasses() {
     return groups;
 }
 
+function renderClassGroups(classes) {
+    return [...groupedClasses(classes).entries()].map(([parallel, parallelClasses]) => {
+        const open = parallelClasses.some(item => item.suggested
+            || item.students.some(student => exitState.selectedStudents.has(Number(student.id))));
+        return `<details class="exit-parallel" ${open ? 'open' : ''}><summary>${exitEsc(parallel)} <span class="muted">(${parallelClasses.length})</span></summary>
+          <div class="exit-parallel-classes">${parallelClasses.map(renderClassBlock).join('')}</div></details>`;
+    }).join('');
+}
+
 function renderClassPicker() {
-    const groups = groupedClasses();
+    const classes = exitState.references.classes || [];
+    const groups = groupedClasses(classes);
     if (!groups.size) {
         exitUi.classPicker.innerHTML = '<p class="muted">В выбранном учебном году классы не найдены.</p>';
         return;
     }
-    exitUi.classPicker.innerHTML = [...groups.entries()].map(([parallel, classes]) => {
-        const open = classes.some(item => item.suggested || item.students.some(student => exitState.selectedStudents.has(Number(student.id))));
-        return `<details class="exit-parallel" ${open ? 'open' : ''}><summary>${exitEsc(parallel)} <span class="muted">(${classes.length})</span></summary>
-          <div class="exit-parallel-classes">${classes.map(renderClassBlock).join('')}</div></details>`;
-    }).join('');
+    const suggestedClasses = classes.filter(item => item.suggested);
+    if (exitClassTeacherWorkspace && suggestedClasses.length) {
+        const otherClasses = classes.filter(item => !item.suggested);
+        if (exitUi.classHint) {
+            exitUi.classHint.textContent = 'Ваш класс показан сразу. При необходимости добавьте детей из других классов.';
+        }
+        exitUi.classPicker.innerHTML = `<div class="exit-own-classes">${suggestedClasses.map(renderClassBlock).join('')}</div>
+          ${otherClasses.length ? `<button type="button" class="secondary exit-other-classes-toggle" data-exit-toggle-other aria-expanded="${exitState.showOtherClasses}">
+            ${exitState.showOtherClasses ? 'Скрыть детей других классов' : 'Дети других классов'}</button>
+          ${exitState.showOtherClasses ? `<div class="exit-other-classes">${renderClassGroups(otherClasses)}</div>` : ''}` : ''}`;
+    } else {
+        if (exitUi.classHint) {
+            exitUi.classHint.textContent = 'Раскройте параллель и выберите класс целиком или отдельных детей.';
+        }
+        exitUi.classPicker.innerHTML = renderClassGroups(classes);
+    }
     bindClassPicker();
     updateSelectionSummary();
 }
@@ -137,6 +161,10 @@ function renderClassBlock(item) {
 }
 
 function bindClassPicker() {
+    exitUi.classPicker.querySelector('[data-exit-toggle-other]')?.addEventListener('click', () => {
+        exitState.showOtherClasses = !exitState.showOtherClasses;
+        renderClassPicker();
+    });
     exitUi.classPicker.querySelectorAll('[data-exit-class]').forEach(input => {
         input.indeterminate = input.dataset.partial === 'true';
         input.addEventListener('change', () => {
@@ -190,6 +218,7 @@ function resetForm() {
     exitState.editingId = null;
     exitState.selectedStudents = new Set();
     exitState.autoGatheringPlace = '';
+    exitState.showOtherClasses = false;
     exitUi.form.reset();
     exitUi.constructorTitle.textContent = 'Новая заявка';
     exitUi.submitBtn.textContent = 'Отправить заявку';
@@ -229,6 +258,8 @@ function openEdit(order) {
     exitState.autoGatheringPlace = order.gatheringPlace || '';
     exitUi.returnTime.value = String(order.returnTime || '').slice(0,5);
     exitState.selectedStudents = new Set((order.participants || []).map(item => Number(item.studentId)));
+    exitState.showOtherClasses = (exitState.references.classes || []).some(item => !item.suggested
+        && item.students.some(student => exitState.selectedStudents.has(Number(student.id))));
     exitUi.primary.value = String(order.primaryCompanion?.id || '');
     exitUi.secondary.value = String(order.secondaryCompanion?.id || '');
     const additional = new Set((order.additionalCompanions || []).map(item => String(item.id)));
@@ -258,18 +289,24 @@ function companionsText(order) {
 
 function visibleOrders() {
     const query = exitUi.search.value.trim().toLowerCase();
-    return exitState.orders.filter(order => (!exitUi.status.value || order.status === exitUi.status.value)
+    const rows = exitState.orders.filter(order => (exitState.listView === 'archive' ? order.archived : !order.archived)
+        && (!exitUi.status.value || order.status === exitUi.status.value)
         && (!query || [order.eventName, order.venue, order.eventAddress, order.requestedBy, companionsText(order),
             ...(order.classNames || [])].join(' ').toLowerCase().includes(query)));
+    return exitState.listView === 'archive' ? rows.reverse() : rows;
 }
 
 function renderOrders() {
     const rows = visibleOrders();
-    const approved = exitState.orders.filter(item => item.approvalComplete).length;
-    const released = exitState.orders.filter(item => item.status === 'RELEASED').length;
-    exitUi.listSummary.textContent = `Всего: ${exitState.orders.length}. Согласовано: ${approved}. Выпущено: ${released}.`;
+    const sectionOrders = exitState.orders.filter(order => exitState.listView === 'archive' ? order.archived : !order.archived);
+    const approved = sectionOrders.filter(item => item.approvalComplete).length;
+    const released = sectionOrders.filter(item => item.status === 'RELEASED').length;
+    if (exitUi.listTitle) exitUi.listTitle.textContent = exitState.listView === 'archive' ? 'Архив приказов' : 'Согласование и приказы';
+    exitUi.listSummary.textContent = `Всего: ${sectionOrders.length}. Согласовано: ${approved}. Выпущено: ${released}.`;
     if (!rows.length) {
-        exitUi.body.innerHTML = '<tr><td colspan="7" class="muted">Приказов по выбранным условиям нет.</td></tr>';
+        const empty = exitState.listView === 'archive'
+            ? 'В архиве пока нет завершённых мероприятий.' : 'Приказов по выбранным условиям нет.';
+        exitUi.body.innerHTML = `<tr><td colspan="7" class="muted">${empty}</td></tr>`;
         return;
     }
     exitUi.body.innerHTML = rows.map(order => {
@@ -284,8 +321,9 @@ function renderOrders() {
         if (!exitClassTeacherWorkspace && order.generatedDocumentAvailable) actions.push(`<a class="button-link secondary" href="/api/exit-orders/${order.id}/document">Скачать Word</a>`);
         if (!exitClassTeacherWorkspace && order.canRelease) actions.push(`<button type="button" data-exit-action="release" data-id="${order.id}">Выпустить</button>`);
         if (!exitClassTeacherWorkspace && order.canUploadScan) actions.push(`<button type="button" class="secondary" data-exit-action="scan" data-id="${order.id}">${order.signedScanAvailable ? 'Заменить скан' : 'Загрузить скан'}</button>`);
-        if (!exitClassTeacherWorkspace && order.signedScanAvailable) actions.push(`<a class="button-link secondary" href="/api/exit-orders/${order.id}/scan">Скачать скан</a>`);
+        if (order.signedScanAvailable) actions.push(`<a class="button-link secondary" href="/api/exit-orders/${order.id}/scan">Скачать скан</a>`);
         if (order.canMarkAttendance) actions.push(`<button type="button" class="secondary" data-exit-action="attendance" data-id="${order.id}">${order.attendanceMarkedAt ? 'Изменить посещаемость' : 'Отметить неявившихся'}</button>`);
+        if (!exitClassTeacherWorkspace && order.canDelete) actions.push(`<button type="button" class="danger" data-exit-action="delete" data-id="${order.id}">Удалить</button>`);
         if (!actions.length) actions.push('<span class="muted">Только информация</span>');
         return `<tr><td><strong>${exitDate(order.eventDate)}</strong><br>${exitTime(order.startTime)}–${exitTime(order.endTime)}</td>
           <td><strong>${exitEsc(order.eventName)}</strong><br><span class="muted">${exitEsc(order.venue)}<br>${exitEsc(order.eventAddress)}</span></td>
@@ -322,6 +360,11 @@ function bindRowActions() {
             if (button.dataset.exitAction === 'generate') return openGenerate(order);
             if (button.dataset.exitAction === 'attendance') return openAttendance(order);
             if (button.dataset.exitAction === 'scan') return openScan(order);
+            if (button.dataset.exitAction === 'delete') {
+                if (!window.confirm(`Удалить приказ «${order.eventName}» без возможности восстановления?`)) return;
+                await exitApi(`/api/exit-orders/${order.id}`, {method:'DELETE'});
+                return loadExitData({loadReferences: false});
+            }
             if (button.dataset.exitAction === 'ack') {
                 if (!window.confirm(`Согласовать заявку «${order.eventName}»?`)) return;
                 await exitApi(`/api/exit-orders/${order.id}/acknowledge`, {method:'POST'});
@@ -466,6 +509,15 @@ exitUi.refreshBtn?.addEventListener('click', () => {
 exitUi.constructorClose?.addEventListener('click', () => { exitUi.constructorCard.hidden = true; });
 exitUi.search?.addEventListener('input', renderOrders);
 exitUi.status?.addEventListener('change', renderOrders);
+document.querySelectorAll('[data-exit-list-view]').forEach(button => button.addEventListener('click', () => {
+    exitState.listView = button.dataset.exitListView === 'archive' ? 'archive' : 'active';
+    document.querySelectorAll('[data-exit-list-view]').forEach(item => {
+        const active = item.dataset.exitListView === exitState.listView;
+        item.classList.toggle('active', active);
+        item.setAttribute('aria-selected', String(active));
+    });
+    renderOrders();
+}));
 document.querySelectorAll('[data-exit-close]').forEach(button => button.addEventListener('click', () => button.closest('dialog').close()));
 document.querySelectorAll('[data-exit-workspace-tab]').forEach(link => link.addEventListener('click', event => {
     event.preventDefault();

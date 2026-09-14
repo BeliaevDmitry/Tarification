@@ -67,7 +67,11 @@
   </section>
 
   <section class="card">
-    <div class="exit-section-heading"><div><h2>Заявки и приказы</h2><p id="exit-list-summary" class="muted"></p></div>
+    <div class="tabs exit-order-list-tabs" role="tablist" aria-label="Списки приказов на выход">
+      <button type="button" class="tab-btn active" data-exit-list-view="active" role="tab" aria-selected="true">Согласование и приказы</button>
+      <button type="button" class="tab-btn" data-exit-list-view="archive" role="tab" aria-selected="false">Архив</button>
+    </div>
+    <div class="exit-section-heading"><div><h2 id="exit-list-title">Согласование и приказы</h2><p id="exit-list-summary" class="muted"></p></div>
       <div class="row"><input id="exit-search" placeholder="Поиск по мероприятию, классу или педагогу">
         <select id="exit-status-filter"><option value="">Все статусы</option><option value="DRAFT">На согласовании</option>
           <option value="BUILDING_APPROVED">Согласован</option><option value="GENERATED">Word сформирован</option>

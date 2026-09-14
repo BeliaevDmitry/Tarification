@@ -23,6 +23,15 @@ public class ExitOrderSettings {
     @Column(name = "deputy_director_teacher_id")
     private Long deputyDirectorTeacherId;
 
+    @Column(name = "director_teacher_id")
+    private Long directorTeacherId;
+
+    @Column(name = "occupational_safety_teacher_id")
+    private Long occupationalSafetyTeacherId;
+
+    @Column(name = "security_specialist_teacher_id")
+    private Long securitySpecialistTeacherId;
+
     @Column(name = "updated_at", nullable = false)
     private LocalDateTime updatedAt = LocalDateTime.now();
 

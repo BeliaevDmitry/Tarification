@@ -1,14 +1,12 @@
 package org.school.personalLoad.service.impl;
 
 import org.apache.poi.xwpf.usermodel.*;
-import org.apache.poi.xwpf.model.XWPFHeaderFooterPolicy;
+import org.school.personalLoad.service.RussianNameCases;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTBorder;
-import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTBody;
-import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTFldChar;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTFramePr;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTInd;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTParaRPr;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTPPr;
-import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTR;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTTabStop;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTTabs;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTTblGrid;
@@ -17,12 +15,13 @@ import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTTblBorders;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTTblPr;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTTblWidth;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTTcPr;
-import org.openxmlformats.schemas.wordprocessingml.x2006.main.CTSectPr;
-import org.openxmlformats.schemas.wordprocessingml.x2006.main.STFldCharType;
-import org.openxmlformats.schemas.wordprocessingml.x2006.main.STSectionMark;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.STTabJc;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.STBorder;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.STHAnchor;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.STVAnchor;
+import org.openxmlformats.schemas.wordprocessingml.x2006.main.STWrap;
 import org.openxmlformats.schemas.wordprocessingml.x2006.main.STTblWidth;
+import org.openxmlformats.schemas.officeDocument.x2006.sharedTypes.STYAlign;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Service;
 import org.w3c.dom.Element;
@@ -57,6 +56,8 @@ public class ProbeOrderDocumentService {
             BigInteger.valueOf(3324), BigInteger.valueOf(2000)
     };
     private static final String TEMPLATE_MARKER_COLOR = "F9FAFB";
+    private static final String DEFAULT_OCCUPATIONAL_SAFETY_DATIVE = "Беляковой И.В.";
+    private static final String DEFAULT_SECURITY_DATIVE = "Коваленко А.А.";
 
     public byte[] generate(DocumentData data) {
         if (data == null) {
@@ -81,7 +82,7 @@ public class ProbeOrderDocumentService {
             }
             replaceParticipantTable(document, data.participants());
             removeBlankParagraphsBeforeParticipantTable(document);
-            placeExecutorOnLastOrderPage(document, data);
+            placeExecutorInOrderBody(document, data);
             removeTemplateMarkers(document);
             document.write(out);
             return out.toByteArray();
@@ -250,10 +251,7 @@ public class ProbeOrderDocumentService {
                         + "в мероприятии через электронную систему МЭШ;",
                 normalStyle);
         setBulletParagraph(paragraphs.get(first + 7), curatorReportParagraph(data), normalStyle);
-        setNumberedParagraph(paragraphs.get(first + 8),
-                "Специалисту по охране труда Беляковой И.В. обеспечить своевременное проведение инструктажей "
-                        + "с должностными лицами, ответственными за проведение мероприятия.",
-                listStyle);
+        setNumberedParagraph(paragraphs.get(first + 8), occupationalSafetyParagraph(data), listStyle);
         setNumberedParagraph(paragraphs.get(first + 9), safetyParagraph(data), listStyle);
         setNumberedParagraph(paragraphs.get(first + 10),
                 "Контроль за исполнением настоящего Приказа оставляю за собой.", listStyle);
@@ -281,7 +279,8 @@ public class ProbeOrderDocumentService {
                 : ", заместителем руководителя группы " + accusativeInitials(data.secondaryCompanion());
         String additional = data.additionalCompanions().isEmpty()
                 ? ""
-                : ", сопровождающими " + data.additionalCompanions().stream()
+                : ", " + (data.additionalCompanions().size() == 1
+                ? "сопровождающим " : "сопровождающими ") + data.additionalCompanions().stream()
                 .map(this::accusativeInitials).collect(java.util.stream.Collectors.joining(", "));
         String pronoun = allCompanions(data).size() == 1 ? "него" : "них";
         return cleanup("Назначить руководителем группы " + accusativeInitials(data.primaryCompanion())
@@ -306,20 +305,30 @@ public class ProbeOrderDocumentService {
                 + (curator.isBlank() ? "." : " " + surnameInitials(curator) + ".");
     }
 
+    private String occupationalSafetyParagraph(DocumentData data) {
+        String specialist = dativeInitials(data.occupationalSafetySpecialist());
+        if (specialist.isBlank()) specialist = DEFAULT_OCCUPATIONAL_SAFETY_DATIVE;
+        return "Специалисту по охране труда " + specialist
+                + " обеспечить своевременное проведение инструктажей с должностными лицами, "
+                + "ответственными за проведение мероприятия.";
+    }
+
     private String safetyParagraph(DocumentData data) {
         List<String> recipients = new ArrayList<>();
         if (!dativeInitials(data.director()).isBlank()) {
             recipients.add("директору школы " + dativeInitials(data.director()));
         }
-        // Ответственный за безопасность постоянный и закреплён в утверждённом тексте приказа.
-        recipients.add("специалисту по безопасности Коваленко А.А.");
+        String securitySpecialist = dativeInitials(data.securitySpecialist());
+        recipients.add("специалисту по безопасности "
+                + (securitySpecialist.isBlank() ? DEFAULT_SECURITY_DATIVE : securitySpecialist));
         if (!dativeInitials(data.deputyDirector()).isBlank()) {
             recipients.add("заместителю директора " + dativeInitials(data.deputyDirector()));
         }
-        return cleanup("Руководителю группы " + dativeInitials(data.primaryCompanion())
+        String result = cleanup("Руководителю группы " + dativeInitials(data.primaryCompanion())
                 + " неукоснительно соблюдать требования мер безопасности при проведении мероприятия. "
                 + "В случае возникновения чрезвычайных ситуаций или других непредвиденных инцидентах "
-                + "немедленно сообщать " + String.join(", ", recipients) + ".");
+                + "немедленно сообщать " + String.join(", ", recipients));
+        return result.endsWith(".") ? result : result + ".";
     }
 
     private void replaceOrderRequisitesParagraph(XWPFParagraph paragraph, DocumentData data) {
@@ -424,19 +433,23 @@ public class ProbeOrderDocumentService {
                 .anyMatch(value -> value != null && value.contains("ФИО"));
     }
 
-    private void placeExecutorOnLastOrderPage(XWPFDocument document, DocumentData data) {
+    private void placeExecutorInOrderBody(XWPFDocument document, DocumentData data) {
         List<IBodyElement> elements = document.getBodyElements();
         int signatureIndex = -1;
         int appendixIndex = -1;
-        XWPFParagraph signature = null;
         XWPFParagraph appendix = null;
+        XWPFParagraph executor = null;
+        XWPFParagraph phone = null;
         for (int i = 0; i < elements.size(); i++) {
             if (!(elements.get(i) instanceof XWPFParagraph paragraph)) continue;
             String value = paragraph.getText();
             if (signatureIndex < 0 && value.contains(text(data.signerPosition()))
                     && value.contains(surnameInitials(data.signer() == null ? "" : data.signer().fullName()))) {
                 signatureIndex = i;
-                signature = paragraph;
+            } else if (signatureIndex >= 0 && executor == null && value.trim().startsWith("Исп.:")) {
+                executor = paragraph;
+            } else if (executor != null && phone == null && !value.isBlank()) {
+                phone = paragraph;
             }
             if (value.trim().equals("Приложение № 1")) {
                 appendixIndex = i;
@@ -444,45 +457,36 @@ public class ProbeOrderDocumentService {
                 break;
             }
         }
-        if (signatureIndex < 0 || appendixIndex < 0 || signature == null || appendix == null) {
-            throw new IllegalStateException("В шаблоне не найден блок подписи или приложения");
+        if (signatureIndex < 0 || appendixIndex < 0 || appendix == null || executor == null || phone == null) {
+            throw new IllegalStateException("В шаблоне не найден блок подписи, исполнителя или приложения");
         }
 
+        String executorLine = executor.getText();
+        String phoneLine = phone.getText();
         for (int i = appendixIndex - 1; i > signatureIndex; i--) {
-            document.removeBodyElement(i);
+            IBodyElement element = document.getBodyElements().get(i);
+            if (element != executor) document.removeBodyElement(i);
         }
-        appendix.setPageBreak(false);
-
-        CTBody body = document.getDocument().getBody();
-        CTSectPr appendixSection = body.isSetSectPr() ? body.getSectPr() : body.addNewSectPr();
-        CTSectPr orderSection = (CTSectPr) appendixSection.copy();
-        while (orderSection.sizeOfFooterReferenceArray() > 0) orderSection.removeFooterReference(0);
-        if (orderSection.isSetType()) {
-            orderSection.getType().setVal(STSectionMark.NEXT_PAGE);
-        } else {
-            orderSection.addNewType().setVal(STSectionMark.NEXT_PAGE);
-        }
-        CTPPr signatureProperties = signature.getCTP().isSetPPr()
-                ? signature.getCTP().getPPr() : signature.getCTP().addNewPPr();
-        signatureProperties.setSectPr(orderSection);
-        orderSection = signatureProperties.getSectPr();
-
-        XWPFHeaderFooterPolicy orderPolicy = new XWPFHeaderFooterPolicy(document, orderSection);
-        XWPFFooter orderFooter = orderPolicy.createFooter(XWPFHeaderFooterPolicy.DEFAULT);
-        clearFooter(orderFooter);
-        addLastSectionPageFooterLine(orderFooter, "Исп.: " + executorName(data.executor()));
-        String phone = data.executor() == null || text(data.executor().phone()).isBlank()
-                ? "Телефон исполнителя не указан" : data.executor().phone();
-        addLastSectionPageFooterLine(orderFooter, phone);
-
-        while (appendixSection.sizeOfFooterReferenceArray() > 0) appendixSection.removeFooterReference(0);
-        XWPFHeaderFooterPolicy appendixPolicy = new XWPFHeaderFooterPolicy(document, appendixSection);
-        XWPFFooter appendixFooter = appendixPolicy.createFooter(XWPFHeaderFooterPolicy.DEFAULT);
-        clearFooter(appendixFooter);
-        XWPFParagraph empty = appendixFooter.createParagraph();
-        empty.setSpacingBefore(0);
-        empty.setSpacingAfter(0);
-        document.getSettings().setUpdateFields();
+        appendix.setPageBreak(true);
+        replaceParagraph(executor, executorLine, 11, false);
+        XWPFRun phoneRun = executor.createRun();
+        styleRun(phoneRun, false, 11);
+        phoneRun.addBreak();
+        phoneRun.setText(phoneLine);
+        executor.setSpacingBefore(0);
+        executor.setSpacingAfter(0);
+        executor.setSpacingBetween(1.0D);
+        CTPPr executorProperties = executor.getCTP().isSetPPr()
+                ? executor.getCTP().getPPr() : executor.getCTP().addNewPPr();
+        CTFramePr frame = executorProperties.isSetFramePr()
+                ? executorProperties.getFramePr() : executorProperties.addNewFramePr();
+        frame.setHAnchor(STHAnchor.MARGIN);
+        frame.setVAnchor(STVAnchor.MARGIN);
+        frame.setX(BigInteger.ZERO);
+        frame.setYAlign(STYAlign.BOTTOM);
+        frame.setW(BigInteger.valueOf(5000));
+        frame.setWrap(STWrap.NONE);
+        document.getFooterList().forEach(this::clearFooter);
     }
 
     private void clearFooter(XWPFFooter footer) {
@@ -492,49 +496,6 @@ public class ProbeOrderDocumentService {
         while (!footer.getTables().isEmpty()) {
             footer.removeTable(footer.getTables().get(0));
         }
-    }
-
-    private void addLastSectionPageFooterLine(XWPFFooter footer, String value) {
-        XWPFParagraph paragraph = footer.createParagraph();
-        paragraph.setAlignment(ParagraphAlignment.LEFT);
-        paragraph.setSpacingBefore(0);
-        paragraph.setSpacingAfter(0);
-        paragraph.setSpacingBetween(1.0D);
-        appendFieldChar(paragraph, STFldCharType.BEGIN);
-        appendInstruction(paragraph, " IF ");
-        appendSimpleField(paragraph, "PAGE", "1");
-        appendInstruction(paragraph, " = ");
-        appendSimpleField(paragraph, "SECTIONPAGES", "1");
-        appendInstruction(paragraph, " \"" + text(value).replace('"', '\'') + "\" \"\" ");
-        appendFieldChar(paragraph, STFldCharType.SEPARATE);
-        XWPFRun result = paragraph.createRun();
-        styleRun(result, false, 11);
-        result.setText(value);
-        appendFieldChar(paragraph, STFldCharType.END);
-    }
-
-    private void appendSimpleField(XWPFParagraph paragraph, String instruction, String resultText) {
-        appendFieldChar(paragraph, STFldCharType.BEGIN);
-        appendInstruction(paragraph, " " + instruction + " ");
-        appendFieldChar(paragraph, STFldCharType.SEPARATE);
-        XWPFRun result = paragraph.createRun();
-        styleRun(result, false, 11);
-        result.setText(resultText);
-        appendFieldChar(paragraph, STFldCharType.END);
-    }
-
-    private void appendInstruction(XWPFParagraph paragraph, String instruction) {
-        XWPFRun run = paragraph.createRun();
-        styleRun(run, false, 11);
-        run.getCTR().addNewInstrText().setStringValue(instruction);
-    }
-
-    private void appendFieldChar(XWPFParagraph paragraph, STFldCharType.Enum type) {
-        XWPFRun run = paragraph.createRun();
-        styleRun(run, false, 11);
-        CTR ctr = run.getCTR();
-        CTFldChar field = ctr.addNewFldChar();
-        field.setFldCharType(type);
     }
 
     private void applyParticipantTableGeometry(XWPFTable table) {
@@ -860,11 +821,31 @@ public class ProbeOrderDocumentService {
     }
 
     private String dativeInitials(PersonData person) {
-        return person == null ? "" : casedSurnameInitials(person.dativeOrName(), person);
+        return casedInitials(person, true);
     }
 
     private String accusativeInitials(PersonData person) {
-        return person == null ? "" : casedSurnameInitials(person.accusativeOrName(), person);
+        return casedInitials(person, false);
+    }
+
+    private String casedInitials(PersonData person, boolean dative) {
+        if (person == null) return "";
+        String fullName = text(person.fullName());
+        String selected = text(dative ? person.dative() : person.accusative());
+        String[] fullNameParts = fullName.split("\\s+");
+        if (selected.isBlank() || (fullNameParts.length >= 3
+                && firstWord(selected).equalsIgnoreCase(firstWord(fullName)))) {
+            var generated = RussianNameCases.derive(fullName);
+            String derived = dative ? generated.initialsDative() : generated.initialsAccusative();
+            if (!text(derived).isBlank()) return derived;
+        }
+        return casedSurnameInitials(selected.isBlank() ? fullName : selected, person);
+    }
+
+    private String firstWord(String value) {
+        String normalized = text(value);
+        int separator = normalized.indexOf(' ');
+        return separator < 0 ? normalized : normalized.substring(0, separator);
     }
 
     private String casedSurnameInitials(String casedName, PersonData person) {
@@ -960,6 +941,8 @@ public class ProbeOrderDocumentService {
                                String signerPosition,
                                PersonData director,
                                PersonData deputyDirector,
+                               PersonData occupationalSafetySpecialist,
+                               PersonData securitySpecialist,
                                PersonData executor,
                                List<ParticipantData> participants,
                                String preamble,
@@ -993,7 +976,37 @@ public class ProbeOrderDocumentService {
             this(academicYear, orderNumber, orderDate, eventDate, startTime, formattedClasses, classWord, venue,
                     eventAddress, gatheringTime, gatheringPlace, returnTime, curator, primaryCompanion,
                     secondaryCompanion, additionalCompanions, signer, signerPosition, director, deputyDirector,
-                    executor, participants, null, null);
+                    null, null, executor, participants, null, null);
+        }
+
+        public DocumentData(String academicYear,
+                            String orderNumber,
+                            LocalDate orderDate,
+                            LocalDate eventDate,
+                            LocalTime startTime,
+                            String formattedClasses,
+                            String classWord,
+                            String venue,
+                            String eventAddress,
+                            LocalTime gatheringTime,
+                            String gatheringPlace,
+                            LocalTime returnTime,
+                            String curator,
+                            PersonData primaryCompanion,
+                            PersonData secondaryCompanion,
+                            List<PersonData> additionalCompanions,
+                            PersonData signer,
+                            String signerPosition,
+                            PersonData director,
+                            PersonData deputyDirector,
+                            PersonData executor,
+                            List<ParticipantData> participants,
+                            String preamble,
+                            String eventPurpose) {
+            this(academicYear, orderNumber, orderDate, eventDate, startTime, formattedClasses, classWord, venue,
+                    eventAddress, gatheringTime, gatheringPlace, returnTime, curator, primaryCompanion,
+                    secondaryCompanion, additionalCompanions, signer, signerPosition, director, deputyDirector,
+                    null, null, executor, participants, preamble, eventPurpose);
         }
 
         public DocumentData(String academicYear,
@@ -1019,8 +1032,8 @@ public class ProbeOrderDocumentService {
                             List<ParticipantData> participants) {
             this(academicYear, orderNumber, orderDate, eventDate, startTime, formattedClasses, classWord, venue,
                     eventAddress, gatheringTime, gatheringPlace, returnTime, curator, primaryCompanion,
-                    secondaryCompanion, List.of(), signer, signerPosition, director, deputyDirector, executor,
-                    participants, null, null);
+                    secondaryCompanion, List.of(), signer, signerPosition, director, deputyDirector,
+                    null, null, executor, participants, null, null);
         }
     }
 }

@@ -3,6 +3,7 @@ package org.school.personalLoad.service.impl;
 import org.junit.jupiter.api.Test;
 import org.school.personalLoad.auth.AppUser;
 import org.school.personalLoad.auth.AppTab;
+import org.school.personalLoad.auth.AuthExceptions;
 import org.school.personalLoad.auth.SessionUser;
 import org.school.personalLoad.auth.TabPermissionSnapshot;
 import org.school.personalLoad.auth.UserRole;
@@ -19,9 +20,11 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class ExitOrderServiceImplTest {
@@ -37,6 +40,33 @@ class ExitOrderServiceImplTest {
 
         assertEquals(20L, result.deputyDirectorTeacherId());
         assertEquals("Власова Юлия Сергеевна", result.deputyDirectorName());
+    }
+
+    @Test
+    void usesConfiguredOrderOfficialsAndDirectorAsDefaultSigner() {
+        TestContext context = context();
+        TeacherDirectoryEntry director = teacher(21L, "Соколова Елена Павловна", "СП1");
+        director.setPrimaryPosition("Директор");
+        TeacherDirectoryEntry deputy = teacher(22L, "Орлова Анна Игоревна", "СП1");
+        TeacherDirectoryEntry occupationalSafety = teacher(23L, "Морозова Ирина Львовна", "СП1");
+        TeacherDirectoryEntry security = teacher(24L, "Волков Павел Олегович", "СП1");
+        ExitOrderSettings settings = new ExitOrderSettings();
+        settings.setDirectorTeacherId(21L);
+        settings.setDeputyDirectorTeacherId(22L);
+        settings.setOccupationalSafetyTeacherId(23L);
+        settings.setSecuritySpecialistTeacherId(24L);
+        when(context.settings.findById(ExitOrderSettings.DEFAULT_ID)).thenReturn(Optional.of(settings));
+        when(context.teachers.findAll()).thenReturn(List.of(director, deputy, occupationalSafety, security));
+
+        ExitOrderDtos.SettingsView view = context.service.settings("2026/2027", admin());
+        ExitOrderDtos.ReferenceData references = context.service.references("2026/2027", admin());
+
+        assertEquals(21L, view.directorTeacherId());
+        assertEquals("Соколова Елена Павловна", view.directorName());
+        assertEquals(22L, view.deputyDirectorTeacherId());
+        assertEquals(23L, view.occupationalSafetyTeacherId());
+        assertEquals(24L, view.securitySpecialistTeacherId());
+        assertEquals(21L, references.defaultSignerTeacherId());
     }
 
     @Test
@@ -158,6 +188,81 @@ class ExitOrderServiceImplTest {
         assertEquals(List.of(100L, 101L), methodistOrders.stream().map(ExitOrderDtos.OrderView::id).toList());
     }
 
+    @Test
+    void classTeacherCanDownloadScanOnlyForOwnOrder() {
+        TestContext context = context();
+        SchoolBuilding building = building(10L, "СП1", "Корпус 1", "ул. Первая, д. 1");
+        TeacherDirectoryEntry companion = teacher(20L, "Петрова Мария Сергеевна", "СП1");
+        ExitOrder order = releasedOrder(100L, building, companion);
+        order.setRequestedByUserId(2L);
+        ExitOrderScan scan = scan(order, "Приказ-100.pdf", new byte[]{1, 2, 3});
+        when(context.orders.findOneById(100L)).thenReturn(Optional.of(order));
+        when(context.orders.findAllByAcademicYearOrderByEventDateAscStartTimeAsc("2026/2027"))
+                .thenReturn(List.of(order));
+        when(context.scans.findByOrder_Id(100L)).thenReturn(Optional.of(scan));
+        when(context.scans.findAllByOrder_IdIn(any())).thenReturn(List.of(scan));
+
+        SessionUser author = user(2L, UserRole.CLASS_TEACHER,
+                AppTab.CLASS_TEACHER_EXIT_ORDER_SUMMARY, false);
+        SessionUser otherClassTeacher = user(3L, UserRole.CLASS_TEACHER,
+                AppTab.CLASS_TEACHER_EXIT_ORDER_SUMMARY, false);
+
+        assertTrue(context.service.list("2026/2027", author).get(0).signedScanAvailable());
+        assertEquals("Приказ-100.pdf", context.service.signedScan(100L, author).filename());
+        assertThrows(AuthExceptions.ForbiddenException.class,
+                () -> context.service.signedScan(100L, otherClassTeacher));
+    }
+
+    @Test
+    void buildingHeadWithDocumentExportPermissionCanDownloadScan() {
+        TestContext context = context();
+        SchoolBuilding building = building(10L, "СП1", "Корпус 1", "ул. Первая, д. 1");
+        TeacherDirectoryEntry companion = teacher(20L, "Петрова Мария Сергеевна", "СП1");
+        ExitOrder order = releasedOrder(100L, building, companion);
+        ExitOrderScan scan = scan(order, "Приказ-100.pdf", new byte[]{1, 2, 3});
+        when(context.orders.findOneById(100L)).thenReturn(Optional.of(order));
+        when(context.scans.findByOrder_Id(100L)).thenReturn(Optional.of(scan));
+
+        SessionUser buildingHead = user(9L, UserRole.BUILDING_HEAD,
+                AppTab.DOCUMENTS_EXIT_ORDERS, false, true);
+
+        assertEquals("Приказ-100.pdf", context.service.signedScan(100L, buildingHead).filename());
+    }
+
+    @Test
+    void releasedOrderMovesToArchiveOnlyAfterEventFinishes() {
+        TestContext context = context();
+        SchoolBuilding building = building(10L, "СП1", "Корпус 1", "ул. Первая, д. 1");
+        TeacherDirectoryEntry companion = teacher(20L, "Петрова Мария Сергеевна", "СП1");
+        ExitOrder finished = releasedOrder(100L, building, companion);
+        ExitOrder upcoming = releasedOrder(101L, building, companion);
+        upcoming.setEventDate(LocalDate.now().plusDays(1));
+        when(context.orders.findAllByAcademicYearOrderByEventDateAscStartTimeAsc("2026/2027"))
+                .thenReturn(List.of(finished, upcoming));
+
+        List<ExitOrderDtos.OrderView> result = context.service.list("2026/2027", admin());
+
+        assertTrue(result.stream().filter(item -> item.id().equals(100L)).findFirst().orElseThrow().archived());
+        assertFalse(result.stream().filter(item -> item.id().equals(101L)).findFirst().orElseThrow().archived());
+    }
+
+    @Test
+    void deputyDirectorCanDeleteOrderButBuildingHeadCannot() {
+        TestContext context = context();
+        SchoolBuilding building = building(10L, "СП1", "Корпус 1", "ул. Первая, д. 1");
+        TeacherDirectoryEntry companion = teacher(20L, "Петрова Мария Сергеевна", "СП1");
+        ExitOrder order = releasedOrder(100L, building, companion);
+        when(context.orders.findOneById(100L)).thenReturn(Optional.of(order));
+
+        SessionUser deputy = user(8L, UserRole.DEPUTY_DIRECTOR, AppTab.DOCUMENTS_EXIT_ORDERS, true);
+        context.service.delete(100L, deputy);
+
+        verify(context.scans).deleteByOrder_Id(100L);
+        verify(context.orders).delete(order);
+        SessionUser buildingHead = user(9L, UserRole.BUILDING_HEAD, AppTab.DOCUMENTS_EXIT_ORDERS, true);
+        assertThrows(AuthExceptions.ForbiddenException.class, () -> context.service.delete(100L, buildingHead));
+    }
+
     private TestContext context() {
         ExitOrderRepository orders = mock(ExitOrderRepository.class);
         ExitOrderApprovalRepository approvals = mock(ExitOrderApprovalRepository.class);
@@ -177,7 +282,8 @@ class ExitOrderServiceImplTest {
         ExitOrderServiceImpl service = new ExitOrderServiceImpl(orders, approvals, settings, dictionaries,
                 documents, scans, classrooms, enrollments, students, buildings, teachers, appUsers,
                 new ProbeOrderDocumentService());
-        return new TestContext(service, orders, classrooms, enrollments, students, buildings, teachers, appUsers);
+        return new TestContext(service, orders, scans, classrooms, enrollments, students, buildings, teachers,
+                appUsers, settings);
     }
 
     private SessionUser admin() {
@@ -186,7 +292,11 @@ class ExitOrderServiceImplTest {
     }
 
     private SessionUser user(Long id, UserRole role, AppTab tab, boolean canEdit) {
-        TabPermissionSnapshot permission = new TabPermissionSnapshot(tab, true, canEdit, false, false);
+        return user(id, role, tab, canEdit, false);
+    }
+
+    private SessionUser user(Long id, UserRole role, AppTab tab, boolean canEdit, boolean canExport) {
+        TabPermissionSnapshot permission = new TabPermissionSnapshot(tab, true, canEdit, false, canExport);
         return new SessionUser(id, "user" + id, role.getDisplayName(), null, null, role,
                 true, true, canEdit, null, false, new LinkedHashSet<>(), List.of(permission));
     }
@@ -278,13 +388,25 @@ class ExitOrderServiceImplTest {
         return participant;
     }
 
+    private ExitOrderScan scan(ExitOrder order, String fileName, byte[] content) {
+        ExitOrderScan scan = new ExitOrderScan();
+        scan.setOrder(order);
+        scan.setFileName(fileName);
+        scan.setContentType("application/pdf");
+        scan.setFileSize(content.length);
+        scan.setContent(content);
+        return scan;
+    }
+
     private record TestContext(ExitOrderServiceImpl service,
                                ExitOrderRepository orders,
+                               ExitOrderScanRepository scans,
                                ClassroomLeadershipRepository classrooms,
                                StudentClassEnrollmentRepository enrollments,
                                StudentProfileRepository students,
                                SchoolBuildingRepository buildings,
                                TeacherDirectoryRepository teachers,
-                               AppUserRepository appUsers) {
+                               AppUserRepository appUsers,
+                               ExitOrderSettingsRepository settings) {
     }
 }

@@ -1679,6 +1679,26 @@ td.vacancy-row {
     gap: 10px;
 }
 
+.exit-order-list-tabs {
+    margin: 0 0 18px;
+}
+
+.exit-own-classes {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.exit-other-classes-toggle {
+    justify-self: start;
+}
+
+.exit-other-classes {
+    display: grid;
+    gap: 10px;
+    padding-top: 2px;
+}
+
 .exit-parallel {
     border: 1px solid #dbe3ef;
     border-radius: 10px;
@@ -1794,6 +1814,7 @@ td.vacancy-row {
         justify-content: flex-start;
     }
     .exit-constructor-grid,
+    .exit-own-classes,
     .exit-parallel-classes,
     .exit-settings-grid,
     .exit-summary-grid,
@@ -4849,5 +4870,201 @@ td.vacancy-row {
 
     .app-sidebar-group h3 {
         grid-column: 1 / -1;
+    }
+}
+
+/* Страница всегда остаётся в пределах монитора; широкая таблица прокручивается внутри своей карточки. */
+html,
+body {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: hidden;
+}
+
+.container,
+.card,
+.app-shell-header,
+.app-workspace-layout,
+.app-workspace-content,
+.app-workspace-content > *,
+.sheet-wrap,
+.table-wrapper {
+    min-width: 0;
+    max-width: 100%;
+}
+
+.container {
+    width: 100%;
+    max-width: 1760px;
+}
+
+.app-workspace-layout {
+    grid-template-columns: minmax(185px, 220px) minmax(0, 1fr);
+    gap: 12px;
+}
+
+.app-section-sidebar {
+    padding: 12px;
+}
+
+.app-sidebar-group {
+    margin-top: 12px;
+}
+
+.app-sidebar-link {
+    padding: 7px 8px;
+    font-size: .86rem;
+}
+
+.sheet-wrap,
+.table-wrapper {
+    width: 100%;
+    max-width: 100%;
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+}
+
+.sheet-wrap > table {
+    margin-bottom: 0;
+}
+
+.app-workspace-content .sheet-table th,
+.app-workspace-content .sheet-table td {
+    padding: 6px 7px;
+    font-size: clamp(11px, .82vw, 14px);
+    overflow-wrap: anywhere;
+}
+
+.app-workspace-content input,
+.app-workspace-content select,
+.app-workspace-content textarea,
+.controls-row > label {
+    min-width: 0;
+    max-width: 100%;
+}
+
+dialog {
+    max-width: calc(100vw - 24px);
+}
+
+@media (max-width: 1100px) {
+    .app-workspace-layout {
+        grid-template-columns: minmax(170px, 195px) minmax(0, 1fr);
+        gap: 10px;
+    }
+
+    .card {
+        padding: 12px;
+    }
+}
+
+@media (max-width: 900px) {
+    .app-workspace-layout {
+        grid-template-columns: minmax(0, 1fr);
+    }
+}
+
+/* Переводы между классами */
+.student-transfer-table {
+    min-width: 1120px;
+}
+
+.student-transfer-table th:nth-child(1) { width: 15%; }
+.student-transfer-table th:nth-child(2) { width: 9%; }
+.student-transfer-table th:nth-child(3) { width: 8%; }
+.student-transfer-table th:nth-child(4) { width: 14%; }
+.student-transfer-table th:nth-child(5) { width: 14%; }
+.student-transfer-table th:nth-child(6) { width: 10%; }
+.student-transfer-table th:nth-child(7) { width: 8%; }
+.student-transfer-table th:nth-child(8) { width: 12%; }
+
+.student-transfer-status {
+    display: inline-flex;
+    padding: 5px 8px;
+    border-radius: 999px;
+    background: #fff7ed;
+    color: #9a3412;
+    font-weight: 800;
+}
+
+.student-transfer-status-promised .student-transfer-status,
+.student-transfer-status-approved .student-transfer-status {
+    background: #eff6ff;
+    color: #1d4ed8;
+}
+
+.student-transfer-status-transferred .student-transfer-status {
+    background: #dcfce7;
+    color: #166534;
+}
+
+.student-transfer-status-declined .student-transfer-status,
+.student-transfer-status-withdrawn .student-transfer-status {
+    background: #f1f5f9;
+    color: #64748b;
+}
+
+.student-transfer-history summary {
+    color: #1d4ed8;
+    font-weight: 700;
+    cursor: pointer;
+    white-space: nowrap;
+}
+
+.student-transfer-history > div {
+    width: min(430px, 70vw);
+    max-height: 260px;
+    overflow: auto;
+}
+
+.student-transfer-history article {
+    padding: 8px 0;
+    border-bottom: 1px solid #e2e8f0;
+}
+
+.student-transfer-history article:last-child {
+    border-bottom: 0;
+}
+
+.student-transfer-history article p {
+    margin: 5px 0 0;
+    color: #475569;
+}
+
+.student-transfer-dialog {
+    width: min(900px, calc(100vw - 24px));
+}
+
+.student-transfer-form-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.student-transfer-form-grid label {
+    display: grid;
+    align-content: start;
+    gap: 6px;
+    min-width: 0;
+    font-weight: 700;
+}
+
+.student-transfer-form-grid input,
+.student-transfer-form-grid select,
+.student-transfer-form-grid textarea {
+    width: 100%;
+}
+
+.student-transfer-wide {
+    grid-column: 1 / -1;
+}
+
+@media (max-width: 680px) {
+    .student-transfer-form-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .student-transfer-wide {
+        grid-column: auto;
     }
 }

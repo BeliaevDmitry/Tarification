@@ -10,4 +10,5 @@ import java.util.Optional;
 public interface ExitOrderScanRepository extends JpaRepository<ExitOrderScan, Long> {
     Optional<ExitOrderScan> findByOrder_Id(Long orderId);
     List<ExitOrderScan> findAllByOrder_IdIn(Collection<Long> orderIds);
+    void deleteByOrder_Id(Long orderId);
 }

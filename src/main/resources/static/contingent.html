@@ -20,6 +20,7 @@
             <a class="nav-link nav-home-link" href="/" title="Главная" aria-label="Главная">🏠</a>
             <button type="button" class="nav-link active" data-contingent-tab="stats">Численность</button>
             <button type="button" class="nav-link" data-contingent-tab="admissions">Приём</button>
+            <button type="button" class="nav-link" data-contingent-tab="transfers">Переводы между классами</button>
             <button type="button" class="nav-link" data-contingent-tab="roles">Роли приёма</button>
             <button type="button" class="nav-link" data-contingent-tab="support">Справки</button>
             <button type="button" class="nav-link" data-contingent-tab="nosologies">Справочник нозологий</button>
@@ -201,6 +202,110 @@
             <table class="sheet-table" id="contingent-kindergarten-table"></table>
         </div>
     </section>
+
+    <section class="card" data-contingent-pane="transfers" style="display:none;">
+        <div class="admission-heading">
+            <div>
+                <h2>Переводы между классами</h2>
+                <p class="muted">Заявления на переход внутри параллели, ожидание свободного места и история договорённостей.</p>
+            </div>
+            <div class="row controls-row">
+                <button id="student-transfer-refresh-btn" type="button" class="secondary">Обновить</button>
+                <button id="student-transfer-add-btn" type="button">Добавить заявление</button>
+            </div>
+        </div>
+        <div id="student-transfer-totals" class="admission-totals"></div>
+        <div class="admission-list-heading">
+            <h3>Журнал заявлений</h3>
+            <label>Показывать:
+                <select id="student-transfer-filter">
+                    <option value="ACTIVE">Ожидают решения</option>
+                    <option value="WAITING">Только ожидают место</option>
+                    <option value="TRANSFERRED">Переведённые</option>
+                    <option value="CLOSED">Отказанные и отозванные</option>
+                    <option value="ALL">Все заявления</option>
+                </select>
+            </label>
+        </div>
+        <p id="student-transfer-message" class="muted" aria-live="polite"></p>
+        <div class="sheet-wrap">
+            <table class="sheet-table student-transfer-table">
+                <thead><tr>
+                    <th>Ребёнок</th>
+                    <th>Переход</th>
+                    <th>Дата заявления</th>
+                    <th>Причина</th>
+                    <th>Когда обещали</th>
+                    <th>Статус</th>
+                    <th>Фактически</th>
+                    <th>Комментарий</th>
+                    <th>История</th>
+                    <th>Действия</th>
+                </tr></thead>
+                <tbody id="student-transfer-body"></tbody>
+            </table>
+        </div>
+    </section>
+
+    <dialog id="student-transfer-dialog" class="admission-dialog student-transfer-dialog">
+        <form id="student-transfer-form">
+            <div class="dialog-hero">
+                <div>
+                    <h3 id="student-transfer-dialog-title">Добавить заявление на перевод</h3>
+                    <p class="muted">Исходный класс определяется по последней выгрузке текущего учебного года.</p>
+                </div>
+                <button id="student-transfer-dialog-close" type="button" class="secondary">Закрыть</button>
+            </div>
+            <input id="student-transfer-id" type="hidden">
+            <div class="student-transfer-form-grid">
+                <label class="student-transfer-wide">Найти ребёнка
+                    <input id="student-transfer-student-search" type="search" placeholder="Начните вводить ФИО или класс" autocomplete="off">
+                </label>
+                <label class="student-transfer-wide">Ребёнок из текущего контингента
+                    <select id="student-transfer-student" required></select>
+                </label>
+                <label>Текущий класс
+                    <input id="student-transfer-from-class" type="text" readonly>
+                </label>
+                <label>Желаемый класс
+                    <select id="student-transfer-target-class" required></select>
+                </label>
+                <label>Дата заявления
+                    <input id="student-transfer-request-date" type="date" required>
+                </label>
+                <label>Статус
+                    <select id="student-transfer-status" required>
+                        <option value="WAITING_FOR_PLACE">Ожидает свободное место</option>
+                        <option value="PROMISED">Перевод обещан</option>
+                        <option value="APPROVED">Перевод согласован</option>
+                        <option value="TRANSFERRED">Переведён</option>
+                        <option value="DECLINED">Отказано</option>
+                        <option value="WITHDRAWN">Заявление отозвано</option>
+                    </select>
+                </label>
+                <label>Обещанная дата
+                    <input id="student-transfer-promised-date" type="date">
+                </label>
+                <label>Фактическая дата перевода
+                    <input id="student-transfer-completed-date" type="date">
+                </label>
+                <label class="student-transfer-wide">Что обещали / условие ожидания
+                    <input id="student-transfer-promise-note" type="text" maxlength="1000" placeholder="Например: перевести, когда в 7-Б появится место">
+                </label>
+                <label class="student-transfer-wide">Причина перевода
+                    <textarea id="student-transfer-reason" rows="3" required></textarea>
+                </label>
+                <label class="student-transfer-wide">Комментарий
+                    <textarea id="student-transfer-comment" rows="3"></textarea>
+                </label>
+            </div>
+            <p id="student-transfer-dialog-message" class="muted" aria-live="polite"></p>
+            <div class="row dialog-actions">
+                <button id="student-transfer-save-btn" type="submit">Сохранить</button>
+                <button id="student-transfer-cancel-btn" type="button" class="secondary">Отмена</button>
+            </div>
+        </form>
+    </dialog>
 
     <section class="card" data-contingent-pane="admissions" style="display:none;">
         <div class="admission-heading">

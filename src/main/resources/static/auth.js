@@ -125,6 +125,7 @@ const NAV_SECTIONS = {
         items: [
             { group: 'Контингент', path: '/contingent.html#stats', tab: 'CONTINGENT_STATS', label: 'Численность и списки' },
             { group: 'Контингент', path: '/contingent.html#admissions', tab: 'CONTINGENT_ADMISSION', label: 'Приём' },
+            { group: 'Контингент', path: '/contingent.html#transfers', tab: 'CONTINGENT_CLASS_TRANSFERS', label: 'Переводы между классами' },
             { group: 'Контингент', path: '/contingent.html#roles', tab: 'CONTINGENT_ADMISSION_ROLES', label: 'Роли приёма' },
             { group: 'Обмен данными', path: '/contingent.html#import', tab: 'CONTINGENT_IMPORT', label: 'Импорт' },
             { group: 'Обмен данными', path: '/contingent.html#manual', tab: 'CONTINGENT_STATS', label: 'Ручная правка' },
@@ -304,6 +305,7 @@ function currentTab() {
         const hash = String(window.location.hash || '').toLowerCase();
         if (hash === '#import') return 'CONTINGENT_IMPORT';
         if (hash === '#admissions') return 'CONTINGENT_ADMISSION';
+        if (hash === '#transfers') return 'CONTINGENT_CLASS_TRANSFERS';
         if (hash === '#roles') return 'CONTINGENT_ADMISSION_ROLES';
         if (hash === '#manual') return 'CONTINGENT_STATS';
         if (hash === '#mismatches') return 'CONTINGENT_IMPORT';
@@ -354,6 +356,7 @@ function hasContingentAccess(currentUser) {
         || permissions.CONTINGENT_IMPORT?.canView
         || permissions.CONTINGENT_STATS?.canView
         || permissions.CONTINGENT_ADMISSION?.canView
+        || permissions.CONTINGENT_CLASS_TRANSFERS?.canView
         || permissions.CONTINGENT_ADMISSION_ROLES?.canView
     );
 }
