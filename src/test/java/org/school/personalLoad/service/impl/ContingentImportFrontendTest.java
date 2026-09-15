@@ -108,6 +108,8 @@ class ContingentImportFrontendTest {
         String pageScript = Files.readString(Path.of("src/main/resources/static/contingent.js"));
         String authScript = Files.readString(Path.of("src/main/resources/static/auth.js"));
         String adminScript = Files.readString(Path.of("src/main/resources/static/admin.js"));
+        String styles = Files.readString(Path.of("src/main/resources/static/styles.css"));
+        String tableScrollScript = Files.readString(Path.of("src/main/resources/static/table-scroll.js"));
 
         assertTrue(html.contains("data-contingent-tab=\"admissions\""));
         assertTrue(html.contains("id=\"admission-parallel-stats\""));
@@ -116,6 +118,9 @@ class ContingentImportFrontendTest {
         assertTrue(html.contains("id=\"admission-requested-parallel\""));
         assertTrue(html.contains("id=\"admission-action-dialog\""));
         assertTrue(html.contains("<th>Доп. информация</th>"));
+        assertTrue(html.contains("class=\"sheet-wrap admission-table-wrap\""));
+        assertTrue(html.contains("class=\"admission-col-name\""));
+        assertTrue(html.contains("src=\"/table-scroll.js\""));
         assertTrue(html.contains("data-contingent-tab=\"roles\""));
         assertTrue(html.contains("id=\"admission-roles-body\""));
         assertTrue(html.contains("id=\"admission-role-add\""));
@@ -130,12 +135,19 @@ class ContingentImportFrontendTest {
         assertTrue(pageScript.contains("data-admission-action=\"PROCESSED\""));
         assertTrue(pageScript.contains("admission-row-testing"));
         assertTrue(pageScript.contains("row.additionalInfo"));
+        assertTrue(pageScript.contains("class=\"admission-name-cell\""));
         assertTrue(pageScript.contains("Назначенных сотрудников пока нет"));
         assertTrue(pageScript.contains("function openAdmissionRoleDialog"));
         assertTrue(pageScript.contains("currentAdmissionData?.classOptions"));
         assertTrue(authScript.contains("currentUser.admissionAccess?.canView"));
         assertTrue(authScript.contains("#roles') return 'CONTINGENT_ADMISSION_ROLES'"));
+        assertTrue(authScript.contains("function ensureReadableTableViewports"));
+        assertTrue(authScript.contains("new MutationObserver"));
         assertTrue(adminScript.contains("CONTINGENT_ADMISSION_ROLES', label: 'Роли приёма', sensitive: true"));
+        assertTrue(styles.contains(".admission-table .admission-col-name { width: 220px; }"));
+        assertTrue(styles.contains("word-break: normal"));
+        assertTrue(styles.contains(".table-viewport"));
+        assertTrue(tableScrollScript.contains("new ResizeObserver(syncFromScroll)"));
     }
 
     @Test

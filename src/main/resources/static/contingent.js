@@ -1007,7 +1007,7 @@ function renderAdmissionCandidates() {
         filter === 'ALL' || (filter === 'PROCESSED' ? row.processed : !row.processed)
     );
     ui.admissionBody.innerHTML = candidates.length ? candidates.map((row) => `<tr class="admission-row admission-decision-${esc(String(row.decisionStatus || 'PENDING').toLowerCase())}${row.testing ? ' admission-row-testing' : ''}${row.processed ? ' admission-row-processed' : ''}">
-        <td><strong>${esc(row.fullName)}</strong></td>
+        <td class="admission-name-cell" title="${esc(row.fullName)}"><strong>${esc(row.fullName)}</strong></td>
         <td>${esc(row.requestedParallel)} параллель</td>
         <td>${admissionStatusButtons(row)}</td>
         <td class="multiline-cell">${admissionText(row.problems)}</td>

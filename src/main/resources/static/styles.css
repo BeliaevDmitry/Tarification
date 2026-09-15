@@ -4888,7 +4888,8 @@ body {
 .app-workspace-content,
 .app-workspace-content > *,
 .sheet-wrap,
-.table-wrapper {
+.table-wrapper,
+.table-viewport {
     min-width: 0;
     max-width: 100%;
 }
@@ -4917,11 +4918,13 @@ body {
 }
 
 .sheet-wrap,
-.table-wrapper {
+.table-wrapper,
+.table-viewport {
     width: 100%;
     max-width: 100%;
     overflow-x: auto;
     overscroll-behavior-inline: contain;
+    -webkit-overflow-scrolling: touch;
 }
 
 .sheet-wrap > table {
@@ -4932,7 +4935,8 @@ body {
 .app-workspace-content .sheet-table td {
     padding: 6px 7px;
     font-size: clamp(11px, .82vw, 14px);
-    overflow-wrap: anywhere;
+    overflow-wrap: break-word;
+    word-break: normal;
 }
 
 .app-workspace-content input,
@@ -4962,6 +4966,106 @@ dialog {
     .app-workspace-layout {
         grid-template-columns: minmax(0, 1fr);
     }
+}
+
+/* Таблицы сохраняют целые слова: широкое содержимое прокручивается внутри блока таблицы. */
+.sheet-table th,
+.sheet-table td {
+    overflow-wrap: break-word;
+    word-break: normal;
+}
+
+.sheet-wrap:focus-visible,
+.table-wrapper:focus-visible,
+.table-viewport:focus-visible {
+    outline: 3px solid rgba(37, 99, 235, .28);
+    outline-offset: 2px;
+}
+
+.table-viewport > table {
+    margin-bottom: 0;
+}
+
+/* Приём детей: ФИО и рабочие поля остаются читаемыми при любом размере окна. */
+.admission-table-wrap {
+    position: relative;
+    scrollbar-gutter: stable;
+}
+
+.admission-table {
+    width: 1975px;
+    min-width: 1975px;
+    table-layout: fixed;
+}
+
+.admission-table .admission-col-name { width: 220px; }
+.admission-table .admission-col-parallel { width: 110px; }
+.admission-table .admission-col-documents { width: 340px; }
+.admission-table .admission-col-problems { width: 190px; }
+.admission-table .admission-col-comment { width: 210px; }
+.admission-table .admission-col-class { width: 125px; }
+.admission-table .admission-col-result { width: 150px; }
+.admission-table .admission-col-info { width: 260px; }
+.admission-table .admission-col-completed { width: 110px; }
+.admission-table .admission-col-actions { width: 260px; }
+
+.admission-table th,
+.admission-table td {
+    line-height: 1.3;
+    white-space: normal;
+    overflow-wrap: break-word;
+    word-break: normal;
+}
+
+.admission-table th:first-child,
+.admission-table .admission-name-cell {
+    position: sticky;
+    left: 0;
+}
+
+.admission-table th:first-child {
+    z-index: 4;
+    background: #f8fafc;
+}
+
+.admission-table .admission-name-cell {
+    z-index: 2;
+    background: #fff;
+    box-shadow: 3px 0 5px rgba(15, 23, 42, .08);
+    font-size: 13px;
+}
+
+.admission-table .admission-name-cell strong {
+    display: block;
+    min-width: 0;
+    overflow-wrap: break-word;
+    word-break: normal;
+}
+
+.admission-table .multiline-cell {
+    min-width: 0;
+    max-width: none;
+}
+
+.admission-table .admission-status-actions {
+    min-width: 0;
+}
+
+.admission-table .admission-actions {
+    min-width: 0;
+}
+
+.admission-table .admission-additional-info {
+    min-width: 0;
+    max-width: none;
+}
+
+.admission-row-testing:not(.admission-row-processed) .admission-name-cell {
+    background: #fff7cc;
+}
+
+.admission-row-processed .admission-name-cell {
+    background: #f8fafc;
 }
 
 /* Переводы между классами */
