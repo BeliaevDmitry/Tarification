@@ -37,6 +37,14 @@
 
         wrap.addEventListener("scroll", syncFromScroll, { passive: true });
         window.addEventListener("resize", syncFromScroll);
+        if (typeof ResizeObserver === "function") {
+            const resizeObserver = new ResizeObserver(syncFromScroll);
+            resizeObserver.observe(wrap);
+            wrap.tableScrollResizeObserver = resizeObserver;
+        }
+        const contentObserver = new MutationObserver(syncFromScroll);
+        contentObserver.observe(wrap, { childList: true, subtree: true });
+        wrap.tableScrollContentObserver = contentObserver;
         syncFromScroll();
     }
 

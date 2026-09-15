@@ -879,6 +879,53 @@ function disableExportAreas(currentUser) {
     });
 }
 
+function ensureReadableTableViewports(root = document) {
+    const tables = [];
+    if (root instanceof Element && root.matches('table')) tables.push(root);
+    if (typeof root.querySelectorAll === 'function') tables.push(...root.querySelectorAll('table'));
+
+    tables.forEach((table) => {
+        if (table.dataset.viewportChecked === '1' || table.id === 'building-load-table') return;
+        table.dataset.viewportChecked = '1';
+
+        let ancestor = table.parentElement;
+        let hasViewport = false;
+        while (ancestor && ancestor !== document.body && ancestor !== document.documentElement) {
+            const overflowX = window.getComputedStyle(ancestor).overflowX;
+            if (overflowX === 'auto' || overflowX === 'scroll' || overflowX === 'hidden') {
+                hasViewport = true;
+                break;
+            }
+            ancestor = ancestor.parentElement;
+        }
+        if (hasViewport || !table.parentNode) return;
+
+        const viewport = document.createElement('div');
+        viewport.className = 'table-viewport';
+        viewport.tabIndex = 0;
+        viewport.setAttribute('role', 'region');
+        viewport.setAttribute('aria-label', table.getAttribute('aria-label') || 'Таблица с прокруткой');
+        table.parentNode.insertBefore(viewport, table);
+        viewport.appendChild(table);
+    });
+}
+
+function watchReadableTables() {
+    ensureReadableTableViewports();
+    if (window.tarificationTableViewportObserver) return;
+    let scheduled = false;
+    const observer = new MutationObserver(() => {
+        if (scheduled) return;
+        scheduled = true;
+        window.requestAnimationFrame(() => {
+            scheduled = false;
+            ensureReadableTableViewports();
+        });
+    });
+    observer.observe(document.body, { childList: true, subtree: true });
+    window.tarificationTableViewportObserver = observer;
+}
+
 (async function initAuth() {
     try {
         const currentUser = await tarificationApi('/api/auth/me');
@@ -929,6 +976,7 @@ function disableExportAreas(currentUser) {
         insertReadonlyNotice(currentUser);
         disableEditAreas(currentUser);
         disableExportAreas(currentUser);
+        watchReadableTables();
         updateStickyHeaderMetrics();
         window.withAcademicYear = withAcademicYear;
         window.getStoredAcademicYear = getStoredAcademicYear;

@@ -337,8 +337,20 @@
             </label>
         </div>
         <p id="admission-message" class="muted" aria-live="polite"></p>
-        <div class="sheet-wrap">
+        <div class="sheet-wrap admission-table-wrap" tabindex="0" aria-label="Таблица заявлений на приём">
             <table class="sheet-table admission-table">
+                <colgroup>
+                    <col class="admission-col-name">
+                    <col class="admission-col-parallel">
+                    <col class="admission-col-documents">
+                    <col class="admission-col-problems">
+                    <col class="admission-col-comment">
+                    <col class="admission-col-class">
+                    <col class="admission-col-result">
+                    <col class="admission-col-info">
+                    <col class="admission-col-completed">
+                    <col class="admission-col-actions">
+                </colgroup>
                 <thead><tr>
                     <th>ФИО</th>
                     <th>Хочет в параллель</th>
@@ -1011,6 +1023,7 @@
 </main>
 <script src="/auth.js"></script>
 <script src="/contingent.js"></script>
+<script src="/table-scroll.js"></script>
 <script src="/branding.js"></script>
 </body>
 </html>
