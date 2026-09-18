@@ -44,15 +44,20 @@ public class PaWorkMaterialController {
                                                     @RequestParam String scopeValue,
                                                     @RequestParam PaLevel level,
                                                     @RequestParam PaWorkType workType,
-                                                    @RequestParam int variantCount,
-                                                    @RequestParam(required = false) MultipartFile textFile,
-                                                    @RequestParam(required = false) MultipartFile answersFile,
+                                                    @RequestParam(required = false) List<MultipartFile> textFiles,
+                                                    @RequestParam(required = false) List<MultipartFile> answerFiles,
                                                     HttpSession session) throws Exception {
         SessionUser user = session == null ? null : (SessionUser) session.getAttribute(SessionUser.SESSION_KEY);
         String username = user == null ? "unknown" : user.getUsername();
         String fullName = user == null ? username : user.getFullName();
         return materialService.upload(resolveYear(academicYear), subjectName, scopeType, scopeValue, level,
-                workType, variantCount, textFile, answersFile, username, fullName);
+                workType, textFiles, answerFiles, username, fullName);
+    }
+
+    @GetMapping("/files/{fileId}/download")
+    public ResponseEntity<byte[]> downloadFile(@PathVariable Long fileId) throws Exception {
+        return attachment(materialService.loadAttachment(fileId), materialService.attachmentFileName(fileId),
+                MediaType.APPLICATION_OCTET_STREAM);
     }
 
     @GetMapping("/{materialId}/download")

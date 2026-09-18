@@ -3,6 +3,7 @@ package org.school.personalLoad.pa.dto;
 import org.school.personalLoad.pa.model.PaLevel;
 import org.school.personalLoad.pa.model.PaScopeType;
 import org.school.personalLoad.pa.model.PaTaskKind;
+import org.school.personalLoad.pa.model.PaWorkMaterialFileKind;
 import org.school.personalLoad.pa.model.PaWorkType;
 
 import java.time.LocalDate;
@@ -146,6 +147,14 @@ public final class PaDtos {
                                            Integer parallel) {
     }
 
+    public record WorkMaterialFileRow(Long id,
+                                      PaWorkMaterialFileKind kind,
+                                      String fileName,
+                                      String uploadedByFio,
+                                      LocalDateTime uploadedAt,
+                                      boolean legacy) {
+    }
+
     public record WorkMaterialRow(Long id,
                                   String academicYear,
                                   String subjectName,
@@ -154,22 +163,21 @@ public final class PaDtos {
                                   Integer parallel,
                                   PaLevel level,
                                   PaWorkType workType,
-                                  Integer variantCount,
-                                  boolean textAvailable,
-                                  String textFileName,
-                                  String textUploadedByFio,
-                                  LocalDateTime textUploadedAt,
-                                  boolean answersAvailable,
-                                  String answersFileName,
-                                  String answersUploadedByFio,
-                                  LocalDateTime answersUploadedAt,
+                                  List<WorkMaterialFileRow> textFiles,
+                                  List<WorkMaterialFileRow> answerFiles,
                                   LocalDateTime updatedAt) {
     }
 
     public record WorkMaterialUploadResponse(Long id,
-                                             boolean textUploaded,
-                                             boolean answersUploaded,
+                                             int textFilesUploaded,
+                                             int answerFilesUploaded,
                                              String message) {
+    }
+
+    public record PublicWorkMaterialFileRow(Long id,
+                                            PaWorkMaterialFileKind kind,
+                                            String fileName,
+                                            boolean legacy) {
     }
 
     public record PublicWorkMaterialRow(Long id,
@@ -180,11 +188,8 @@ public final class PaDtos {
                                         Integer parallel,
                                         PaLevel level,
                                         PaWorkType workType,
-                                        Integer variantCount,
-                                        boolean textAvailable,
-                                        String textFileName,
-                                        boolean answersAvailable,
-                                        String answersFileName,
+                                        List<PublicWorkMaterialFileRow> textFiles,
+                                        List<PublicWorkMaterialFileRow> answerFiles,
                                         LocalDateTime updatedAt) {
     }
 }
