@@ -21,7 +21,7 @@
     <header class="card app-shell-header">
         <h1>ВСОКО / ПА — Тексты работ</h1>
         <nav class="page-nav"></nav>
-        <p class="muted">Тексты работ и ответы загружаются раздельно и объединяются по предмету, классу, уровню и типу работы.</p>
+        <p class="muted">Тексты работ и ответы загружаются раздельно и объединяются по предмету, классу, уровню и типу работы. Можно выбрать один файл, сразу несколько файлов или добавлять их по одному позднее.</p>
         <p><a href="/pa-materials.html" target="_blank">Открыть публичную страницу скачивания без авторизации ↗</a></p>
     </header>
 
@@ -41,11 +41,9 @@
                     <label id="pa-material-scope-label">Параллель<select id="pa-material-scope" required></select></label>
                     <label>Уровень работы<select id="pa-material-level"><option value="BASIC">Базовый</option><option value="ADVANCED">Углублённый</option></select></label>
                     <label>Тип работы<select id="pa-material-work-type"><option value="ENTRY">Входная</option><option value="MID">Промежуточная</option><option value="EXIT" selected>Выходная</option></select></label>
-                    <label>Варианты в файле<select id="pa-material-variant-mode"><option value="1">Один вариант</option><option value="many">Несколько вариантов</option></select></label>
-                    <label id="pa-material-variant-count-wrap" hidden>Точное количество вариантов<input id="pa-material-variant-count" type="number" min="2" max="99" value="2"></label>
                     <div class="pa-material-files pa-material-wide">
-                        <label class="pa-file-box"><strong>Текст работы</strong><span class="muted">DOCX, PDF, XLSX, презентация или архив</span><input id="pa-material-text-file" name="textFile" type="file" accept=".pdf,.doc,.docx,.odt,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.7z,.png,.jpg,.jpeg"></label>
-                        <label class="pa-file-box"><strong>Ответы</strong><span class="muted">Можно загрузить сейчас или отдельно позднее</span><input id="pa-material-answers-file" name="answersFile" type="file" accept=".pdf,.doc,.docx,.odt,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.7z,.png,.jpg,.jpeg"></label>
+                        <label class="pa-file-box"><strong>Тексты работ</strong><span class="muted">Один общий файл или несколько файлов с вариантами; можно добавлять позднее</span><input id="pa-material-text-files" name="textFiles" type="file" multiple accept=".pdf,.doc,.docx,.odt,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.7z,.png,.jpg,.jpeg"></label>
+                        <label class="pa-file-box"><strong>Ответы</strong><span class="muted">Один общий файл или несколько файлов; можно добавлять отдельно позднее</span><input id="pa-material-answer-files" name="answerFiles" type="file" multiple accept=".pdf,.doc,.docx,.odt,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.7z,.png,.jpg,.jpeg"></label>
                     </div>
                     <div class="pa-material-actions pa-material-wide">
                         <button id="pa-material-upload" type="submit">Загрузить выбранные файлы</button>
@@ -65,7 +63,7 @@
         </div>
         <div id="pa-material-registry-panel" class="pa-material-panel" hidden>
             <div class="row"><input id="pa-material-search" type="search" placeholder="Поиск по предмету, классу или загрузившему"><button id="pa-material-refresh" type="button">Обновить</button></div>
-            <div class="pa-material-table-wrap"><table class="pa-material-table"><thead><tr><th>Предмет</th><th>Класс / параллель</th><th>Уровень</th><th>Тип</th><th>Вариантов</th><th>Текст работы</th><th>Ответы</th><th>Обновлено</th></tr></thead><tbody id="pa-material-registry-body"></tbody></table></div>
+            <div class="pa-material-table-wrap"><table class="pa-material-table"><thead><tr><th>Предмет</th><th>Класс / параллель</th><th>Уровень</th><th>Тип</th><th>Тексты работ</th><th>Ответы</th><th>Обновлено</th></tr></thead><tbody id="pa-material-registry-body"></tbody></table></div>
         </div>
     </section>
 </main>

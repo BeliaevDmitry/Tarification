@@ -8,6 +8,8 @@ const workRu=value=>value==='ENTRY'?'входная':value==='MID'?'промеж
 const dateRu=value=>value?new Date(value).toLocaleString('ru-RU'):'—';
 const rowParallel=row=>Number(row.parallel||String(row.scopeValue||'').match(/^\d{1,2}/)?.[0]||0);
 const subjectArea=subject=>(paMaterialsState.subjects.find(row=>row.subjectName===subject)?.subjectAreaName||'Без предметной области');
+const materialFiles=(row,kind)=>kind==='TEXT'?(row.textFiles||[]):(row.answerFiles||[]);
+function materialDownload(row,file){return file.legacy?scoped(`/api/pa/materials/${row.id}/download?kind=${file.kind}`):scoped(`/api/pa/materials/files/${file.id}/download`);}
 
 function setMaterialTab(tab){
     document.querySelectorAll('[data-material-tab]').forEach(button=>button.classList.toggle('active',button.dataset.materialTab===tab));
@@ -40,13 +42,13 @@ function fillScopes(){
 }
 
 function materialCard(row){
-    const complete=row.textAvailable&&row.answersAvailable;
+    const texts=materialFiles(row,'TEXT');const answers=materialFiles(row,'ANSWERS');const complete=texts.length>0&&answers.length>0;
     const state=complete?'pa-material-complete':'pa-material-partial';
     const scope=row.scopeType==='CLASS'?row.scopeValue:`${row.scopeValue} параллель`;
-    const textStatus=row.textAvailable?`✅ текст · ${html(row.textUploadedByFio||'неизвестно')}`:'❌ нет текста';
-    const answerStatus=row.answersAvailable?`✅ ответы · ${html(row.answersUploadedByFio||'неизвестно')}`:'❌ нет ответов';
-    const downloads=`<span class="pa-material-downloads">${row.textAvailable?`<a href="${scoped(`/api/pa/materials/${row.id}/download?kind=TEXT`)}">Текст</a>`:''}${row.answersAvailable?`<a href="${scoped(`/api/pa/materials/${row.id}/download?kind=ANSWERS`)}">Ответы</a>`:''}</span>`;
-    return `<span class="pa-material-card ${state}"><strong>${html(scope)} · ${html(workRu(row.workType))}</strong><small>${html(levelRu(row.level))} · вариантов: ${row.variantCount}</small><small>${textStatus}</small><small>${answerStatus}</small>${downloads}</span>`;
+    const textStatus=texts.length?`✅ тексты: ${texts.map(file=>`${html(file.fileName||'файл')} — ${html(file.uploadedByFio||'неизвестно')}`).join('; ')}`:'❌ нет текстов';
+    const answerStatus=answers.length?`✅ ответы: ${answers.map(file=>`${html(file.fileName||'файл')} — ${html(file.uploadedByFio||'неизвестно')}`).join('; ')}`:'❌ нет ответов';
+    const downloads=`<span class="pa-material-downloads">${[...texts,...answers].map(file=>`<a href="${materialDownload(row,file)}">${file.kind==='TEXT'?'Текст':'Ответы'}: ${html(file.fileName||'Скачать')}</a>`).join('')}</span>`;
+    return `<span class="pa-material-card ${state}"><strong>${html(scope)} · ${html(workRu(row.workType))}</strong><small>${html(levelRu(row.level))}</small><small>${textStatus}</small><small>${answerStatus}</small>${downloads}</span>`;
 }
 
 function renderSummary(hostId,from,to){
@@ -60,14 +62,13 @@ function renderSummary(hostId,from,to){
 
 function renderRegistry(){
     const body=document.getElementById('pa-material-registry-body');const needle=document.getElementById('pa-material-search').value.trim().toLowerCase();
-    const rows=paMaterialsState.materials.filter(row=>!needle||[row.subjectName,row.scopeValue,row.textUploadedByFio,row.answersUploadedByFio,row.textFileName,row.answersFileName].some(value=>String(value||'').toLowerCase().includes(needle)));
-    body.innerHTML=rows.length?rows.map(row=>`<tr><td>${html(row.subjectName)}</td><td>${row.scopeType==='CLASS'?'Класс':'Параллель'} ${html(row.scopeValue)}</td><td>${html(levelRu(row.level))}</td><td>${html(workRu(row.workType))}</td><td>${row.variantCount}</td><td>${fileCell(row,'TEXT')}</td><td>${fileCell(row,'ANSWERS')}</td><td>${dateRu(row.updatedAt)}</td></tr>`).join(''):'<tr><td colspan="8" class="muted">Материалы не найдены</td></tr>';
+    const rows=paMaterialsState.materials.filter(row=>!needle||[row.subjectName,row.scopeValue,...materialFiles(row,'TEXT').flatMap(file=>[file.fileName,file.uploadedByFio]),...materialFiles(row,'ANSWERS').flatMap(file=>[file.fileName,file.uploadedByFio])].some(value=>String(value||'').toLowerCase().includes(needle)));
+    body.innerHTML=rows.length?rows.map(row=>`<tr><td>${html(row.subjectName)}</td><td>${row.scopeType==='CLASS'?'Класс':'Параллель'} ${html(row.scopeValue)}</td><td>${html(levelRu(row.level))}</td><td>${html(workRu(row.workType))}</td><td>${fileCell(row,'TEXT')}</td><td>${fileCell(row,'ANSWERS')}</td><td>${dateRu(row.updatedAt)}</td></tr>`).join(''):'<tr><td colspan="7" class="muted">Материалы не найдены</td></tr>';
 }
 
 function fileCell(row,kind){
-    const text=kind==='TEXT';const available=text?row.textAvailable:row.answersAvailable;const name=text?row.textFileName:row.answersFileName;const uploader=text?row.textUploadedByFio:row.answersUploadedByFio;const at=text?row.textUploadedAt:row.answersUploadedAt;
-    if(!available)return '<span class="pa-status-pill pa-no">Не загружен</span>';
-    return `<a href="${scoped(`/api/pa/materials/${row.id}/download?kind=${kind}`)}">${html(name||'Скачать')}</a><small class="muted" style="display:block">${html(uploader||'неизвестно')}<br>${dateRu(at)}</small>`;
+    const files=materialFiles(row,kind);if(!files.length)return '<span class="pa-status-pill pa-no">Не загружены</span>';
+    return files.map(file=>`<div style="margin-bottom:8px"><a href="${materialDownload(row,file)}">${html(file.fileName||'Скачать')}</a><small class="muted" style="display:block">${html(file.uploadedByFio||'неизвестно')}<br>${dateRu(file.uploadedAt)}</small></div>`).join('');
 }
 
 function renderAll(){renderSummary('pa-material-summary-5-11',5,11);renderSummary('pa-material-summary-1-4',1,4);renderRegistry();}
@@ -76,20 +77,23 @@ async function loadMaterials(){
     paMaterialsState.references=references||[];paMaterialsState.materials=materials||[];paMaterialsState.subjects=subjects||[];fillSubjects();renderAll();
 }
 
+function materialUploadForm(){
+    const form=new FormData();form.set('subjectName',document.getElementById('pa-material-subject').value);form.set('scopeType',document.getElementById('pa-material-scope-type').value);form.set('scopeValue',document.getElementById('pa-material-scope').value);form.set('level',document.getElementById('pa-material-level').value);form.set('workType',document.getElementById('pa-material-work-type').value);return form;
+}
+
 async function uploadMaterial(event){
-    event.preventDefault();const feedback=document.getElementById('pa-material-feedback');const textFile=document.getElementById('pa-material-text-file').files[0];const answersFile=document.getElementById('pa-material-answers-file').files[0];
-    if(!textFile&&!answersFile){feedback.textContent='Выберите текст работы или файл с ответами.';return;}
-    const form=new FormData();form.set('subjectName',document.getElementById('pa-material-subject').value);form.set('scopeType',document.getElementById('pa-material-scope-type').value);form.set('scopeValue',document.getElementById('pa-material-scope').value);form.set('level',document.getElementById('pa-material-level').value);form.set('workType',document.getElementById('pa-material-work-type').value);form.set('variantCount',document.getElementById('pa-material-variant-mode').value==='many'?document.getElementById('pa-material-variant-count').value:'1');if(textFile)form.set('textFile',textFile);if(answersFile)form.set('answersFile',answersFile);
-    feedback.textContent='Загрузка…';document.getElementById('pa-material-upload').disabled=true;
-    try{const result=await materialApi('/api/pa/materials',{method:'POST',body:form});feedback.textContent=result.message;document.getElementById('pa-material-text-file').value='';document.getElementById('pa-material-answers-file').value='';await loadMaterials();}
-    catch(error){feedback.textContent=error.message;}finally{document.getElementById('pa-material-upload').disabled=false;}
+    event.preventDefault();const feedback=document.getElementById('pa-material-feedback');const textFiles=[...document.getElementById('pa-material-text-files').files];const answerFiles=[...document.getElementById('pa-material-answer-files').files];
+    if(!textFiles.length&&!answerFiles.length){feedback.textContent='Выберите хотя бы один файл с текстом работы или ответами.';return;}
+    const queue=[...textFiles.map(file=>({field:'textFiles',file})),...answerFiles.map(file=>({field:'answerFiles',file}))];const errors=[];let uploaded=0;document.getElementById('pa-material-upload').disabled=true;
+    try{for(let index=0;index<queue.length;index++){const item=queue[index];feedback.textContent=`Загрузка ${index+1} из ${queue.length}: ${item.file.name}`;const form=materialUploadForm();form.append(item.field,item.file);try{await materialApi('/api/pa/materials',{method:'POST',body:form});uploaded++;}catch(error){errors.push(`${item.file.name}: ${error.message}`);}}if(!errors.length){document.getElementById('pa-material-text-files').value='';document.getElementById('pa-material-answer-files').value='';}await loadMaterials();feedback.textContent=errors.length?`Загружено ${uploaded} из ${queue.length}. Не обработано: ${errors.join('; ')}`:`Все файлы загружены: ${uploaded}.`;}
+    catch(error){feedback.textContent=`Загружено ${uploaded} из ${queue.length}. Не удалось обновить свод: ${error.message}`;}
+    finally{document.getElementById('pa-material-upload').disabled=false;}
 }
 
 document.querySelectorAll('[data-material-tab]').forEach(button=>button.addEventListener('click',()=>setMaterialTab(button.dataset.materialTab)));
 document.getElementById('pa-material-subject').addEventListener('change',fillScopes);
 document.getElementById('pa-material-scope-type').addEventListener('change',fillScopes);
-document.getElementById('pa-material-variant-mode').addEventListener('change',event=>{document.getElementById('pa-material-variant-count-wrap').hidden=event.target.value!=='many';});
 document.getElementById('pa-material-form').addEventListener('submit',uploadMaterial);
 document.getElementById('pa-material-search').addEventListener('input',renderRegistry);
-document.getElementById('pa-material-refresh').addEventListener('click',()=>loadMaterials().catch(error=>{document.getElementById('pa-material-registry-body').innerHTML=`<tr><td colspan="8">${html(error.message)}</td></tr>`;}));
+document.getElementById('pa-material-refresh').addEventListener('click',()=>loadMaterials().catch(error=>{document.getElementById('pa-material-registry-body').innerHTML=`<tr><td colspan="7">${html(error.message)}</td></tr>`;}));
 loadMaterials().catch(error=>{document.getElementById('pa-material-feedback').textContent=error.message;});

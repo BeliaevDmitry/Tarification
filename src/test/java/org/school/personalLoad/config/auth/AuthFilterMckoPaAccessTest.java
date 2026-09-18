@@ -97,6 +97,7 @@ class AuthFilterMckoPaAccessTest {
         assertPublicAccess(new MockHttpServletRequest("GET", "/pa-materials.js"));
         assertPublicAccess(new MockHttpServletRequest("GET", "/api/public/pa/materials"));
         assertPublicAccess(new MockHttpServletRequest("GET", "/api/public/pa/materials/42/download"));
+        assertPublicAccess(new MockHttpServletRequest("GET", "/api/public/pa/materials/files/73/download"));
         assertPublicAccess(new MockHttpServletRequest("GET", "/api/public/pa/materials/download-all"));
     }
 

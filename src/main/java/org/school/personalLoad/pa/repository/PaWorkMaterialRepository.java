@@ -11,9 +11,9 @@ public interface PaWorkMaterialRepository extends JpaRepository<PaWorkMaterial, 
 
     List<PaWorkMaterial> findAllByAcademicYearOrderBySubjectNameAscScopeValueAscLevelAscWorkTypeAsc(String academicYear);
 
-    Optional<PaWorkMaterial> findFirstByAcademicYearAndSubjectNameAndScopeTypeAndScopeValueAndLevelAndWorkTypeAndVariantCountOrderByUpdatedAtDesc(
+    Optional<PaWorkMaterial> findFirstByAcademicYearAndSubjectNameAndScopeTypeAndScopeValueAndLevelAndWorkTypeOrderByUpdatedAtDesc(
             String academicYear, String subjectName, PaScopeType scopeType, String scopeValue,
-            PaLevel level, PaWorkType workType, Integer variantCount);
+            PaLevel level, PaWorkType workType);
 
     @Query("select distinct m.academicYear from PaWorkMaterial m order by m.academicYear desc")
     List<String> findDistinctAcademicYears();

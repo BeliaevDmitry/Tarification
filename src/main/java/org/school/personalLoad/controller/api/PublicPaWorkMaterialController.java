@@ -42,6 +42,12 @@ public class PublicPaWorkMaterialController {
                 materialService.fileName(materialId, kind), MediaType.APPLICATION_OCTET_STREAM);
     }
 
+    @GetMapping("/files/{fileId}/download")
+    public ResponseEntity<byte[]> downloadFile(@PathVariable Long fileId) throws Exception {
+        return PaWorkMaterialController.attachment(materialService.loadAttachment(fileId),
+                materialService.attachmentFileName(fileId), MediaType.APPLICATION_OCTET_STREAM);
+    }
+
     private String resolveYear(String academicYear) {
         return academicYearService.resolveRequestedOrDefault(academicYear);
     }
