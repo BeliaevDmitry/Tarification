@@ -52,6 +52,14 @@ class AuthFilterMckoPaAccessTest {
     }
 
     @Test
+    void paMaterialUploadRequiresVsokoEditPermission() throws Exception {
+        TabPermissionSnapshot view = new TabPermissionSnapshot(AppTab.VSOKO_VIEW, true, false, false, false);
+        TabPermissionSnapshot edit = new TabPermissionSnapshot(AppTab.VSOKO_EDIT, true, true, false, false);
+        assertAccess(new MockHttpServletRequest("POST", "/api/pa/materials"), List.of(view), false);
+        assertAccess(new MockHttpServletRequest("POST", "/api/pa/materials"), List.of(edit), true);
+    }
+
+    @Test
     void vsokoMckoPagesAndApiRequireDedicatedPermission() throws Exception {
         for (String path : List.of("/vsoko-mcko.html", "/vsoko-summary.html", "/vsoko-interview.html", "/vsoko-mcko-teachers.html")) {
             assertPageAccess(path, List.of(), false);
@@ -75,11 +83,21 @@ class AuthFilterMckoPaAccessTest {
                 "/vsoko-pa-folders.html",
                 "/vsoko-pa-analysis.html",
                 "/vsoko-pa-teachers.html",
-                "/vsoko-pa-upload.html")) {
+                "/vsoko-pa-upload.html",
+                "/vsoko-pa-materials.html")) {
             assertPageAccess(path, List.of(), false);
             assertPageAccess(path,
                     List.of(new TabPermissionSnapshot(AppTab.VSOKO_VIEW, true, false, false, false)), true);
         }
+    }
+
+    @Test
+    void paMaterialsPublicPageAndDownloadsDoNotRequireAuthentication() throws Exception {
+        assertPublicAccess(new MockHttpServletRequest("GET", "/pa-materials.html"));
+        assertPublicAccess(new MockHttpServletRequest("GET", "/pa-materials.js"));
+        assertPublicAccess(new MockHttpServletRequest("GET", "/api/public/pa/materials"));
+        assertPublicAccess(new MockHttpServletRequest("GET", "/api/public/pa/materials/42/download"));
+        assertPublicAccess(new MockHttpServletRequest("GET", "/api/public/pa/materials/download-all"));
     }
 
     @Test
@@ -149,6 +167,17 @@ class AuthFilterMckoPaAccessTest {
             assertEquals(302, response.getStatus());
             assertEquals("/", response.getRedirectedUrl());
         }
+    }
+
+    private void assertPublicAccess(MockHttpServletRequest request) throws Exception {
+        AuthFilter filter = new AuthFilter(
+                new ObjectMapper().registerModule(new JavaTimeModule()),
+                mock(AppUserService.class));
+        MockHttpServletResponse response = new MockHttpServletResponse();
+        RecordingFilterChain chain = new RecordingFilterChain();
+        filter.doFilter(request, response, chain);
+        assertTrue(chain.called);
+        assertEquals(200, response.getStatus());
     }
 
     private static class RecordingFilterChain implements FilterChain {
