@@ -1,0 +1,43 @@
+package org.school.personalLoad.pa.service;
+
+import org.junit.jupiter.api.Test;
+
+import java.nio.file.Files;
+import java.nio.file.Path;
+
+import static org.junit.jupiter.api.Assertions.assertTrue;
+
+class PaWorkMaterialsFrontendTest {
+
+    @Test
+    void protectedWorkspaceContainsSeparateUploadsSummaryAndUploaderDetails() throws Exception {
+        String html = Files.readString(Path.of("src/main/resources/static/vsoko-pa-materials.html"));
+        String script = Files.readString(Path.of("src/main/resources/static/vsoko-pa-materials.js"));
+        String hub = Files.readString(Path.of("src/main/resources/static/vsoko-pa.html"));
+        String auth = Files.readString(Path.of("src/main/resources/static/auth.js"));
+
+        assertTrue(html.contains("Текст работы"));
+        assertTrue(html.contains("Ответы"));
+        assertTrue(html.contains("Свод текстов 5–11"));
+        assertTrue(html.contains("Конкретный класс"));
+        assertTrue(html.contains("Количество вариантов".replace("Количество", "Точное количество")));
+        assertTrue(script.contains("textUploadedByFio"));
+        assertTrue(script.contains("answersUploadedByFio"));
+        assertTrue(script.contains("/api/pa/materials"));
+        assertTrue(hub.contains("/vsoko-pa-materials.html"));
+        assertTrue(auth.contains("label: 'Тексты работ'"));
+    }
+
+    @Test
+    void publicPageOffersIndividualFilesAndOneZipWithoutAuthScript() throws Exception {
+        String html = Files.readString(Path.of("src/main/resources/static/pa-materials.html"));
+        String script = Files.readString(Path.of("src/main/resources/static/pa-materials.js"));
+
+        assertTrue(html.contains("Публичная страница"));
+        assertTrue(html.contains("Скачать всё одним ZIP"));
+        assertTrue(script.contains("/api/public/pa/materials"));
+        assertTrue(script.contains("publicDownload(row,'TEXT')"));
+        assertTrue(script.contains("publicDownload(row,'ANSWERS')"));
+        assertTrue(!html.contains("/auth.js"));
+    }
+}

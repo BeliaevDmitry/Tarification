@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ПА — Скачать тексты работ</title>
+    <link rel="icon" type="image/png" href="/school-crest.png">
+    <link rel="stylesheet" href="/styles.css">
+    <style>
+        .public-material-toolbar{display:flex;gap:12px;align-items:end;flex-wrap:wrap}.public-material-toolbar label{display:grid;gap:5px}.public-material-toolbar .primary-download{display:inline-block;padding:9px 14px;border-radius:8px;background:#244b75;color:#fff;text-decoration:none}.public-materials{display:grid;gap:12px;margin-top:16px}.public-material{border:1px solid #dbe3ea;border-radius:14px;padding:14px;background:#fff}.public-material h3{margin:0 0 8px}.public-material-meta{display:flex;gap:8px;flex-wrap:wrap;color:#475569}.public-material-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:12px}.public-material-actions a{display:inline-block;padding:8px 12px;border:1px solid #aebdca;border-radius:8px;text-decoration:none}.public-material-actions a.primary{background:#eaf8ef;border-color:#76c893}.public-material-missing{color:#8b2222}
+    </style>
+</head>
+<body>
+<main class="container">
+    <header class="card app-shell-header"><h1>ПА — Тексты работ и ответы</h1><p class="muted">Публичная страница. Вход в систему не требуется.</p></header>
+    <section class="card">
+        <div class="public-material-toolbar">
+            <label>Учебный год<select id="public-material-year"></select></label>
+            <label>Предмет<select id="public-material-subject"><option value="">Все предметы</option></select></label>
+            <label>Тип работы<select id="public-material-work-type"><option value="">Все типы</option><option value="ENTRY">Входная</option><option value="MID">Промежуточная</option><option value="EXIT">Выходная</option></select></label>
+            <label>Класс или параллель<input id="public-material-scope" placeholder="Например, 7 или 7-А"></label>
+            <a id="public-material-download-all" class="primary-download" href="#">Скачать всё одним ZIP</a>
+        </div>
+        <div id="public-material-count" class="muted" style="margin-top:14px"></div>
+        <div id="public-material-list" class="public-materials"><p class="muted">Загрузка…</p></div>
+    </section>
+</main>
+<script src="/pa-materials.js"></script>
+</body>
+</html>

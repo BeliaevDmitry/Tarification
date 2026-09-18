@@ -36,6 +36,8 @@ public class AuthFilter extends OncePerRequestFilter {
             "/open-forms.html",
             "/pa.html",
             "/pa-folders.js",
+            "/pa-materials.html",
+            "/pa-materials.js",
             "/public-chat.html",
             "/public-chat.js",
             "/api/public/chat/messages",
@@ -81,6 +83,7 @@ public class AuthFilter extends OncePerRequestFilter {
             Map.entry("/vsoko-pa-analysis.html", AppTab.VSOKO_VIEW),
             Map.entry("/vsoko-pa-teachers.html", AppTab.VSOKO_VIEW),
             Map.entry("/vsoko-pa-upload.html", AppTab.VSOKO_VIEW),
+            Map.entry("/vsoko-pa-materials.html", AppTab.VSOKO_VIEW),
             Map.entry("/vsoko-mcko.html", AppTab.VSOKO_MCKO),
             Map.entry("/vsoko-summary.html", AppTab.VSOKO_MCKO),
             Map.entry("/vsoko-interview.html", AppTab.VSOKO_MCKO),
@@ -100,6 +103,7 @@ public class AuthFilter extends OncePerRequestFilter {
                 || path.startsWith("/css/")
                 || path.startsWith("/js/")
                 || path.startsWith("/school-crests/")
+                || (HttpMethod.GET.matches(request.getMethod()) && path.startsWith("/api/public/pa/materials"))
                 || PUBLIC_PATHS.contains(path)
                 || isPublicPaApiPath(request)
                 || "/api/auth/login".equals(path);

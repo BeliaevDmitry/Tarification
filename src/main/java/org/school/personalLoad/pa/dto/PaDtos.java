@@ -140,4 +140,51 @@ public final class PaDtos {
                                           PaLevel level,
                                           boolean manual) {
     }
+
+    public record WorkMaterialReferenceRow(String subjectName,
+                                           String className,
+                                           Integer parallel) {
+    }
+
+    public record WorkMaterialRow(Long id,
+                                  String academicYear,
+                                  String subjectName,
+                                  PaScopeType scopeType,
+                                  String scopeValue,
+                                  Integer parallel,
+                                  PaLevel level,
+                                  PaWorkType workType,
+                                  Integer variantCount,
+                                  boolean textAvailable,
+                                  String textFileName,
+                                  String textUploadedByFio,
+                                  LocalDateTime textUploadedAt,
+                                  boolean answersAvailable,
+                                  String answersFileName,
+                                  String answersUploadedByFio,
+                                  LocalDateTime answersUploadedAt,
+                                  LocalDateTime updatedAt) {
+    }
+
+    public record WorkMaterialUploadResponse(Long id,
+                                             boolean textUploaded,
+                                             boolean answersUploaded,
+                                             String message) {
+    }
+
+    public record PublicWorkMaterialRow(Long id,
+                                        String academicYear,
+                                        String subjectName,
+                                        PaScopeType scopeType,
+                                        String scopeValue,
+                                        Integer parallel,
+                                        PaLevel level,
+                                        PaWorkType workType,
+                                        Integer variantCount,
+                                        boolean textAvailable,
+                                        String textFileName,
+                                        boolean answersAvailable,
+                                        String answersFileName,
+                                        LocalDateTime updatedAt) {
+    }
 }

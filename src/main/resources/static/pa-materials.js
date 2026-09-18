@@ -1,0 +1,22 @@
+const publicMaterialsState={rows:[]};
+const publicHtml=value=>String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
+const publicWorkRu=value=>value==='ENTRY'?'Входная':value==='MID'?'Промежуточная':'Выходная';
+const publicLevelRu=value=>value==='ADVANCED'?'Углублённый':'Базовый';
+async function publicApi(path){const response=await fetch(path);const text=await response.text();let body;try{body=text?JSON.parse(text):null}catch{body={message:text}}if(!response.ok)throw new Error(body?.message||`Ошибка ${response.status}`);return body;}
+function publicYear(){return document.getElementById('public-material-year').value;}
+function publicDownload(row,kind){return `/api/public/pa/materials/${row.id}/download?kind=${kind}`;}
+
+function renderPublicMaterials(){
+    const subject=document.getElementById('public-material-subject').value;const workType=document.getElementById('public-material-work-type').value;const scope=document.getElementById('public-material-scope').value.trim().toLowerCase();
+    const rows=publicMaterialsState.rows.filter(row=>(!subject||row.subjectName===subject)&&(!workType||row.workType===workType)&&(!scope||String(row.scopeValue||'').toLowerCase().includes(scope)));
+    document.getElementById('public-material-count').textContent=`Найдено комплектов: ${rows.length}`;
+    document.getElementById('public-material-list').innerHTML=rows.length?rows.map(row=>`<article class="public-material"><h3>${publicHtml(row.subjectName)} — ${row.scopeType==='CLASS'?'класс':'параллель'} ${publicHtml(row.scopeValue)}</h3><div class="public-material-meta"><span>${publicHtml(publicWorkRu(row.workType))}</span><span>•</span><span>${publicHtml(publicLevelRu(row.level))}</span><span>•</span><span>вариантов: ${row.variantCount}</span></div><div class="public-material-actions">${row.textAvailable?`<a class="primary" href="${publicDownload(row,'TEXT')}">Скачать текст работы</a>`:'<span class="public-material-missing">Текст не загружен</span>'}${row.answersAvailable?`<a href="${publicDownload(row,'ANSWERS')}">Скачать ответы</a>`:'<span class="public-material-missing">Ответы не загружены</span>'}</div></article>`).join(''):'<p class="muted">По выбранным условиям файлов нет.</p>';
+}
+
+function fillPublicSubjects(){const select=document.getElementById('public-material-subject');const previous=select.value;const subjects=[...new Set(publicMaterialsState.rows.map(row=>row.subjectName).filter(Boolean))].sort((a,b)=>a.localeCompare(b,'ru'));select.innerHTML='<option value="">Все предметы</option>'+subjects.map(value=>`<option value="${publicHtml(value)}">${publicHtml(value)}</option>`).join('');if(subjects.includes(previous))select.value=previous;}
+async function loadPublicMaterials(){const year=publicYear();publicMaterialsState.rows=await publicApi(`/api/public/pa/materials?academicYear=${encodeURIComponent(year)}`)||[];fillPublicSubjects();document.getElementById('public-material-download-all').href=`/api/public/pa/materials/download-all?academicYear=${encodeURIComponent(year)}`;renderPublicMaterials();}
+async function initPublicMaterials(){
+    const years=await publicApi('/api/public/pa/materials/years');const select=document.getElementById('public-material-year');const requested=new URLSearchParams(location.search).get('academicYear');const values=[...new Set(years||[])];select.innerHTML=values.length?values.map(year=>`<option value="${publicHtml(year)}">${publicHtml(year)}</option>`).join(''):'<option value="">Текущий учебный год</option>';if(requested&&values.includes(requested))select.value=requested;await loadPublicMaterials();
+}
+document.getElementById('public-material-year').addEventListener('change',loadPublicMaterials);document.getElementById('public-material-subject').addEventListener('change',renderPublicMaterials);document.getElementById('public-material-work-type').addEventListener('change',renderPublicMaterials);document.getElementById('public-material-scope').addEventListener('input',renderPublicMaterials);
+initPublicMaterials().catch(error=>{document.getElementById('public-material-list').innerHTML=`<p class="public-material-missing">${publicHtml(error.message)}</p>`;});

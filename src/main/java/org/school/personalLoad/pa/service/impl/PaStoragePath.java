@@ -2,12 +2,12 @@ package org.school.personalLoad.pa.service.impl;
 
 import java.nio.file.Path;
 
-final class PaStoragePath {
+public final class PaStoragePath {
 
     private PaStoragePath() {
     }
 
-    static Path resolveUploadedFile(Path directory, String submittedFileName) {
+    public static Path resolveUploadedFile(Path directory, String submittedFileName) {
         if (submittedFileName == null || submittedFileName.isBlank()) {
             throw new IllegalArgumentException("Имя файла не указано");
         }

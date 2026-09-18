@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ВСОКО / ПА — Тексты работ</title>
+    <link rel="icon" type="image/png" href="/school-crest.png">
+    <link rel="stylesheet" href="/styles.css">
+    <style>
+        .pa-material-tabs{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:16px}.pa-material-tabs button.active{background:#244b75;color:#fff}
+        .pa-material-panel[hidden]{display:none}.pa-material-form{display:grid;grid-template-columns:repeat(3,minmax(190px,1fr));gap:14px}.pa-material-form label{display:grid;gap:6px}.pa-material-wide{grid-column:1/-1}
+        .pa-material-files{display:grid;grid-template-columns:1fr 1fr;gap:14px}.pa-file-box{border:1px solid #d7e0e7;border-radius:12px;padding:14px;background:#f8fafc}.pa-file-box strong{display:block;margin-bottom:8px}
+        .pa-material-actions{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.pa-material-feedback{min-height:24px}.pa-material-table-wrap{max-height:70vh;overflow:auto;border:1px solid #dbe3ea;border-radius:12px}.pa-material-table{margin:0;min-width:980px}.pa-material-table thead th{position:sticky;top:0;z-index:4;background:#edf3f8}.pa-material-table thead th:first-child,.pa-material-table tbody th{position:sticky;left:0;z-index:3;background:#fff;min-width:220px}.pa-material-table thead th:first-child{z-index:5;background:#edf3f8}
+        .pa-material-summary-table thead th:first-child,.pa-material-summary-table td.pa-material-area{left:0;min-width:175px;position:sticky;z-index:5;background:#f8fafc}.pa-material-summary-table thead th:nth-child(2),.pa-material-summary-table tbody th{left:175px;min-width:220px}.pa-material-summary-table thead th:nth-child(2){position:sticky;z-index:5;background:#edf3f8}.pa-material-summary-table td.pa-material-area{font-weight:650;vertical-align:top}
+        .pa-material-cell{min-width:180px;vertical-align:top}.pa-material-card{display:block;border:1px solid #b8c7d4;border-radius:10px;padding:8px;margin:4px 0;background:#fff;font-size:.82rem}.pa-material-complete{border-color:#76c893;background:#eaf8ef}.pa-material-partial{border-color:#e7b84b;background:#fff8dc}.pa-material-missing{color:#9b1c1c;background:#fff1f1;text-align:center}.pa-material-card small{display:block;margin-top:4px;color:#475569}.pa-material-downloads{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}.pa-material-downloads a{font-size:.78rem}.pa-status-pill{display:inline-block;border-radius:999px;padding:3px 8px;font-size:.78rem;font-weight:650}.pa-ok{background:#dff4e5;color:#17602d}.pa-warn{background:#fff1c9;color:#765100}.pa-no{background:#fbdede;color:#8b2222}
+        @media(max-width:850px){.pa-material-form{grid-template-columns:1fr}.pa-material-files{grid-template-columns:1fr}.pa-material-wide{grid-column:auto}}
+    </style>
+</head>
+<body>
+<main class="container">
+    <header class="card app-shell-header">
+        <h1>ВСОКО / ПА — Тексты работ</h1>
+        <nav class="page-nav"></nav>
+        <p class="muted">Тексты работ и ответы загружаются раздельно и объединяются по предмету, классу, уровню и типу работы.</p>
+        <p><a href="/pa-materials.html" target="_blank">Открыть публичную страницу скачивания без авторизации ↗</a></p>
+    </header>
+
+    <section class="card">
+        <div class="pa-material-tabs" role="tablist">
+            <button class="active" type="button" data-material-tab="upload">Загрузка файлов</button>
+            <button type="button" data-material-tab="summary-5-11">Свод текстов 5–11</button>
+            <button type="button" data-material-tab="summary-1-4">Свод текстов 1–4</button>
+            <button type="button" data-material-tab="registry">Реестр файлов</button>
+        </div>
+
+        <div id="pa-material-upload-panel" class="pa-material-panel">
+            <form id="pa-material-form" data-requires-edit>
+                <div class="pa-material-form">
+                    <label>Предмет<select id="pa-material-subject" required></select></label>
+                    <label>Область применения<select id="pa-material-scope-type"><option value="PARALLEL">Параллель</option><option value="CLASS">Конкретный класс</option></select></label>
+                    <label id="pa-material-scope-label">Параллель<select id="pa-material-scope" required></select></label>
+                    <label>Уровень работы<select id="pa-material-level"><option value="BASIC">Базовый</option><option value="ADVANCED">Углублённый</option></select></label>
+                    <label>Тип работы<select id="pa-material-work-type"><option value="ENTRY">Входная</option><option value="MID">Промежуточная</option><option value="EXIT" selected>Выходная</option></select></label>
+                    <label>Варианты в файле<select id="pa-material-variant-mode"><option value="1">Один вариант</option><option value="many">Несколько вариантов</option></select></label>
+                    <label id="pa-material-variant-count-wrap" hidden>Точное количество вариантов<input id="pa-material-variant-count" type="number" min="2" max="99" value="2"></label>
+                    <div class="pa-material-files pa-material-wide">
+                        <label class="pa-file-box"><strong>Текст работы</strong><span class="muted">DOCX, PDF, XLSX, презентация или архив</span><input id="pa-material-text-file" name="textFile" type="file" accept=".pdf,.doc,.docx,.odt,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.7z,.png,.jpg,.jpeg"></label>
+                        <label class="pa-file-box"><strong>Ответы</strong><span class="muted">Можно загрузить сейчас или отдельно позднее</span><input id="pa-material-answers-file" name="answersFile" type="file" accept=".pdf,.doc,.docx,.odt,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.7z,.png,.jpg,.jpeg"></label>
+                    </div>
+                    <div class="pa-material-actions pa-material-wide">
+                        <button id="pa-material-upload" type="submit">Загрузить выбранные файлы</button>
+                        <span id="pa-material-feedback" class="pa-material-feedback muted" role="status"></span>
+                    </div>
+                </div>
+            </form>
+        </div>
+
+        <div id="pa-material-summary-5-11-panel" class="pa-material-panel" hidden>
+            <p class="muted">В ячейке видны все материалы предмета по параллели, наличие текста и ответов, а также кто их загрузил.</p>
+            <div id="pa-material-summary-5-11"></div>
+        </div>
+        <div id="pa-material-summary-1-4-panel" class="pa-material-panel" hidden>
+            <p class="muted">Свод по начальной школе.</p>
+            <div id="pa-material-summary-1-4"></div>
+        </div>
+        <div id="pa-material-registry-panel" class="pa-material-panel" hidden>
+            <div class="row"><input id="pa-material-search" type="search" placeholder="Поиск по предмету, классу или загрузившему"><button id="pa-material-refresh" type="button">Обновить</button></div>
+            <div class="pa-material-table-wrap"><table class="pa-material-table"><thead><tr><th>Предмет</th><th>Класс / параллель</th><th>Уровень</th><th>Тип</th><th>Вариантов</th><th>Текст работы</th><th>Ответы</th><th>Обновлено</th></tr></thead><tbody id="pa-material-registry-body"></tbody></table></div>
+        </div>
+    </section>
+</main>
+<script src="/auth.js"></script>
+<script src="/vsoko-pa-materials.js"></script>
+</body>
+</html>

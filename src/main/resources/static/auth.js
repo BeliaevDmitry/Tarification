@@ -39,6 +39,7 @@ const TAB_PATHS = {
     '/vsoko-pa-analysis.html': 'VSOKO_VIEW',
     '/vsoko-pa-teachers.html': 'VSOKO_VIEW',
     '/vsoko-pa-upload.html': 'VSOKO_VIEW',
+    '/vsoko-pa-materials.html': 'VSOKO_VIEW',
     '/vsoko-mcko.html': 'VSOKO_MCKO',
     '/vsoko-summary.html': 'VSOKO_MCKO',
     '/vsoko-interview.html': 'VSOKO_MCKO',
@@ -145,6 +146,7 @@ const NAV_SECTIONS = {
             { group: 'Аттестация', path: '/vsoko-ege.html', tab: 'VSOKO_VIEW', label: 'ЕГЭ' },
             { group: 'Промежуточная аттестация', path: '/vsoko-pa.html', tab: 'VSOKO_VIEW', label: 'Обзор ПА' },
             { group: 'Промежуточная аттестация', path: '/vsoko-pa-spec.html', tab: 'VSOKO_VIEW', label: 'Спецификации' },
+            { group: 'Промежуточная аттестация', path: '/vsoko-pa-materials.html', tab: 'VSOKO_VIEW', label: 'Тексты работ' },
             { group: 'Промежуточная аттестация', path: '/vsoko-pa-entry.html', tab: 'VSOKO_VIEW', label: 'Входные работы' },
             { group: 'Промежуточная аттестация', path: '/vsoko-pa-exit.html', tab: 'VSOKO_VIEW', label: 'Выходные работы' },
             { group: 'Промежуточная аттестация', path: '/vsoko-pa-upload.html', tab: 'VSOKO_VIEW', label: 'Сдача ПА' },
@@ -449,6 +451,9 @@ function showAccessDenied(sectionTitle = 'раздела') {
 
 function canEditCurrentPage(currentUser) {
     if (currentUser.admin) return true;
+    if (window.location.pathname.startsWith('/vsoko-pa')) {
+        return Boolean(tabPermissionMap(currentUser).VSOKO_EDIT?.canEdit);
+    }
     if (window.location.pathname === '/class-teacher.html') {
         return Boolean(tabPermissionMap(currentUser).CLASS_TEACHER_EXIT_ORDER_CREATE?.canEdit);
     }
