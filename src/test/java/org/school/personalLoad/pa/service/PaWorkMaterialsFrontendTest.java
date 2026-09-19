@@ -22,10 +22,12 @@ class PaWorkMaterialsFrontendTest {
         assertTrue(html.contains("Конкретный класс"));
         assertTrue(html.contains("name=\"textFiles\"") && html.contains("name=\"answerFiles\""));
         assertTrue(html.contains("multiple"));
-        assertTrue(!html.contains("Точное количество вариантов"));
+        assertTrue(html.contains("Количество вариантов"));
+        assertTrue(html.contains("id=\"pa-material-variant-count\""));
         assertTrue(script.contains("file.uploadedByFio"));
         assertTrue(script.contains("field:'textFiles'") && script.contains("field:'answerFiles'"));
         assertTrue(script.contains("form.append(item.field,item.file)"));
+        assertTrue(script.contains("form.set('variantCount'"));
         assertTrue(script.contains("Загрузка ${index+1} из ${queue.length}"));
         assertTrue(script.contains("/api/pa/materials"));
         assertTrue(hub.contains("/vsoko-pa-materials.html"));
@@ -43,6 +45,7 @@ class PaWorkMaterialsFrontendTest {
         assertTrue(script.contains("/api/public/pa/materials/files/"));
         assertTrue(script.contains("row.textFiles"));
         assertTrue(script.contains("row.answerFiles"));
+        assertTrue(script.contains("row.variantCount"));
         assertTrue(!html.contains("/auth.js"));
     }
 }

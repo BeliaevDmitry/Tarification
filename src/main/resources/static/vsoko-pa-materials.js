@@ -48,7 +48,7 @@ function materialCard(row){
     const textStatus=texts.length?`✅ тексты: ${texts.map(file=>`${html(file.fileName||'файл')} — ${html(file.uploadedByFio||'неизвестно')}`).join('; ')}`:'❌ нет текстов';
     const answerStatus=answers.length?`✅ ответы: ${answers.map(file=>`${html(file.fileName||'файл')} — ${html(file.uploadedByFio||'неизвестно')}`).join('; ')}`:'❌ нет ответов';
     const downloads=`<span class="pa-material-downloads">${[...texts,...answers].map(file=>`<a href="${materialDownload(row,file)}">${file.kind==='TEXT'?'Текст':'Ответы'}: ${html(file.fileName||'Скачать')}</a>`).join('')}</span>`;
-    return `<span class="pa-material-card ${state}"><strong>${html(scope)} · ${html(workRu(row.workType))}</strong><small>${html(levelRu(row.level))}</small><small>${textStatus}</small><small>${answerStatus}</small>${downloads}</span>`;
+    return `<span class="pa-material-card ${state}"><strong>${html(scope)} · ${html(workRu(row.workType))}</strong><small>${html(levelRu(row.level))} · вариантов: ${html(row.variantCount||1)}</small><small>${textStatus}</small><small>${answerStatus}</small>${downloads}</span>`;
 }
 
 function renderSummary(hostId,from,to){
@@ -63,7 +63,7 @@ function renderSummary(hostId,from,to){
 function renderRegistry(){
     const body=document.getElementById('pa-material-registry-body');const needle=document.getElementById('pa-material-search').value.trim().toLowerCase();
     const rows=paMaterialsState.materials.filter(row=>!needle||[row.subjectName,row.scopeValue,...materialFiles(row,'TEXT').flatMap(file=>[file.fileName,file.uploadedByFio]),...materialFiles(row,'ANSWERS').flatMap(file=>[file.fileName,file.uploadedByFio])].some(value=>String(value||'').toLowerCase().includes(needle)));
-    body.innerHTML=rows.length?rows.map(row=>`<tr><td>${html(row.subjectName)}</td><td>${row.scopeType==='CLASS'?'Класс':'Параллель'} ${html(row.scopeValue)}</td><td>${html(levelRu(row.level))}</td><td>${html(workRu(row.workType))}</td><td>${fileCell(row,'TEXT')}</td><td>${fileCell(row,'ANSWERS')}</td><td>${dateRu(row.updatedAt)}</td></tr>`).join(''):'<tr><td colspan="7" class="muted">Материалы не найдены</td></tr>';
+    body.innerHTML=rows.length?rows.map(row=>`<tr><td>${html(row.subjectName)}</td><td>${row.scopeType==='CLASS'?'Класс':'Параллель'} ${html(row.scopeValue)}</td><td>${html(levelRu(row.level))}</td><td>${html(workRu(row.workType))}</td><td>${html(row.variantCount||1)}</td><td>${fileCell(row,'TEXT')}</td><td>${fileCell(row,'ANSWERS')}</td><td>${dateRu(row.updatedAt)}</td></tr>`).join(''):'<tr><td colspan="8" class="muted">Материалы не найдены</td></tr>';
 }
 
 function fileCell(row,kind){
@@ -78,7 +78,7 @@ async function loadMaterials(){
 }
 
 function materialUploadForm(){
-    const form=new FormData();form.set('subjectName',document.getElementById('pa-material-subject').value);form.set('scopeType',document.getElementById('pa-material-scope-type').value);form.set('scopeValue',document.getElementById('pa-material-scope').value);form.set('level',document.getElementById('pa-material-level').value);form.set('workType',document.getElementById('pa-material-work-type').value);return form;
+    const form=new FormData();form.set('subjectName',document.getElementById('pa-material-subject').value);form.set('scopeType',document.getElementById('pa-material-scope-type').value);form.set('scopeValue',document.getElementById('pa-material-scope').value);form.set('level',document.getElementById('pa-material-level').value);form.set('workType',document.getElementById('pa-material-work-type').value);form.set('variantCount',document.getElementById('pa-material-variant-count').value);return form;
 }
 
 async function uploadMaterial(event){
@@ -95,5 +95,5 @@ document.getElementById('pa-material-subject').addEventListener('change',fillSco
 document.getElementById('pa-material-scope-type').addEventListener('change',fillScopes);
 document.getElementById('pa-material-form').addEventListener('submit',uploadMaterial);
 document.getElementById('pa-material-search').addEventListener('input',renderRegistry);
-document.getElementById('pa-material-refresh').addEventListener('click',()=>loadMaterials().catch(error=>{document.getElementById('pa-material-registry-body').innerHTML=`<tr><td colspan="7">${html(error.message)}</td></tr>`;}));
+document.getElementById('pa-material-refresh').addEventListener('click',()=>loadMaterials().catch(error=>{document.getElementById('pa-material-registry-body').innerHTML=`<tr><td colspan="8">${html(error.message)}</td></tr>`;}));
 loadMaterials().catch(error=>{document.getElementById('pa-material-feedback').textContent=error.message;});

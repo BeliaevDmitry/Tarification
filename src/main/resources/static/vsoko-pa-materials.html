@@ -41,6 +41,7 @@
                     <label id="pa-material-scope-label">Параллель<select id="pa-material-scope" required></select></label>
                     <label>Уровень работы<select id="pa-material-level"><option value="BASIC">Базовый</option><option value="ADVANCED">Углублённый</option></select></label>
                     <label>Тип работы<select id="pa-material-work-type"><option value="ENTRY">Входная</option><option value="MID">Промежуточная</option><option value="EXIT" selected>Выходная</option></select></label>
+                    <label>Количество вариантов<input id="pa-material-variant-count" type="number" min="1" max="999" value="1" required></label>
                     <div class="pa-material-files pa-material-wide">
                         <label class="pa-file-box"><strong>Тексты работ</strong><span class="muted">Один общий файл или несколько файлов с вариантами; можно добавлять позднее</span><input id="pa-material-text-files" name="textFiles" type="file" multiple accept=".pdf,.doc,.docx,.odt,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.7z,.png,.jpg,.jpeg"></label>
                         <label class="pa-file-box"><strong>Ответы</strong><span class="muted">Один общий файл или несколько файлов; можно добавлять отдельно позднее</span><input id="pa-material-answer-files" name="answerFiles" type="file" multiple accept=".pdf,.doc,.docx,.odt,.xls,.xlsx,.ppt,.pptx,.zip,.rar,.7z,.png,.jpg,.jpeg"></label>
@@ -63,7 +64,7 @@
         </div>
         <div id="pa-material-registry-panel" class="pa-material-panel" hidden>
             <div class="row"><input id="pa-material-search" type="search" placeholder="Поиск по предмету, классу или загрузившему"><button id="pa-material-refresh" type="button">Обновить</button></div>
-            <div class="pa-material-table-wrap"><table class="pa-material-table"><thead><tr><th>Предмет</th><th>Класс / параллель</th><th>Уровень</th><th>Тип</th><th>Тексты работ</th><th>Ответы</th><th>Обновлено</th></tr></thead><tbody id="pa-material-registry-body"></tbody></table></div>
+            <div class="pa-material-table-wrap"><table class="pa-material-table"><thead><tr><th>Предмет</th><th>Класс / параллель</th><th>Уровень</th><th>Тип</th><th>Вариантов</th><th>Тексты работ</th><th>Ответы</th><th>Обновлено</th></tr></thead><tbody id="pa-material-registry-body"></tbody></table></div>
         </div>
     </section>
 </main>

@@ -81,7 +81,7 @@ public class PaWorkMaterialService {
     public List<PaDtos.PublicWorkMaterialRow> publicMaterials(String academicYear) {
         return materials(academicYear).stream().map(row -> new PaDtos.PublicWorkMaterialRow(
                 row.id(), row.academicYear(), row.subjectName(), row.scopeType(), row.scopeValue(), row.parallel(),
-                row.level(), row.workType(), publicFiles(row.textFiles()), publicFiles(row.answerFiles()),
+                row.level(), row.workType(), row.variantCount(), publicFiles(row.textFiles()), publicFiles(row.answerFiles()),
                 row.updatedAt())).toList();
     }
 
@@ -97,6 +97,7 @@ public class PaWorkMaterialService {
                                                     String scopeValue,
                                                     PaLevel level,
                                                     PaWorkType workType,
+                                                    int variantCount,
                                                     List<MultipartFile> textFiles,
                                                     List<MultipartFile> answerFiles,
                                                     String username,
@@ -108,6 +109,9 @@ public class PaWorkMaterialService {
         if (scopeType == null) throw new IllegalArgumentException("Выберите параллель или конкретный класс");
         if (level == null) throw new IllegalArgumentException("Выберите уровень работы");
         if (workType == null) throw new IllegalArgumentException("Выберите тип работы");
+        if (variantCount < 1 || variantCount > 999) {
+            throw new IllegalArgumentException("Количество вариантов должно быть от 1 до 999");
+        }
         List<MultipartFile> texts = nonEmptyFiles(textFiles);
         List<MultipartFile> answers = nonEmptyFiles(answerFiles);
         if (texts.isEmpty() && answers.isEmpty()) {
@@ -122,6 +126,7 @@ public class PaWorkMaterialService {
                         year, subject, scopeType, normalizedScope, level, workType)
                 .orElseGet(PaWorkMaterial::new);
         LocalDateTime now = LocalDateTime.now();
+        material.setVariantCount(variantCount);
         if (material.getId() == null) {
             material.setAcademicYear(year);
             material.setSubjectName(subject);
@@ -129,9 +134,6 @@ public class PaWorkMaterialService {
             material.setScopeValue(normalizedScope);
             material.setLevel(level);
             material.setWorkType(workType);
-            // Поле оставлено для совместимости с ранее созданной таблицей. В интерфейсе
-            // количество вариантов больше не задаётся: вариантами могут быть любые файлы.
-            material.setVariantCount(1);
             material.setCreatedAt(now);
             material.setUpdatedAt(now);
             material = materialRepository.saveAndFlush(material);
@@ -273,7 +275,7 @@ public class PaWorkMaterialService {
         }
         return new PaDtos.WorkMaterialRow(material.getId(), material.getAcademicYear(), material.getSubjectName(),
                 material.getScopeType(), material.getScopeValue(), parallel(material.getScopeValue()), material.getLevel(),
-                material.getWorkType(), textFiles, answerFiles, material.getUpdatedAt());
+                material.getWorkType(), material.getVariantCount(), textFiles, answerFiles, material.getUpdatedAt());
     }
 
     private PaWorkMaterial requireMaterial(Long id) {
