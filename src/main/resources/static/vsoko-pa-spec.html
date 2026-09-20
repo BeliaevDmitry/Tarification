@@ -26,10 +26,14 @@
 
   <section class="card tab-panel" id="pa-tab-specs">
     <h2>Спецификации работ</h2>
+    <div class="row">
+      <button id="pa-spec-template-btn" type="button">Скачать шаблон спецификации</button>
+      <button id="pa-spec-reload-btn" type="button" data-allow-readonly="true">Обновить свод</button>
+      <span class="muted">В шаблоне предмет, класс, тип, уровень и шкала выбираются из готовых списков.</span>
+    </div>
     <div class="row" data-requires-edit>
       <input id="pa-spec-files" type="file" multiple accept=".xlsx">
       <button id="pa-spec-import-btn" type="button">Загрузить спецификации</button>
-      <button id="pa-spec-reload-btn" type="button" data-allow-readonly="true">Обновить свод</button>
       <span id="pa-problem-counter" class="muted">Проблем: 0</span>
     </div>
     <div class="tabs" id="pa-spec-tabs">

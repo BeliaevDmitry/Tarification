@@ -163,6 +163,7 @@ public final class PaDtos {
                                   Integer parallel,
                                   PaLevel level,
                                   PaWorkType workType,
+                                  Integer variantCount,
                                   List<WorkMaterialFileRow> textFiles,
                                   List<WorkMaterialFileRow> answerFiles,
                                   LocalDateTime updatedAt) {
@@ -188,6 +189,7 @@ public final class PaDtos {
                                         Integer parallel,
                                         PaLevel level,
                                         PaWorkType workType,
+                                        Integer variantCount,
                                         List<PublicWorkMaterialFileRow> textFiles,
                                         List<PublicWorkMaterialFileRow> answerFiles,
                                         LocalDateTime updatedAt) {

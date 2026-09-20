@@ -33,7 +33,7 @@ class PaWorkMaterialServiceTest {
         Fixture fixture = fixture();
 
         PaDtos.WorkMaterialUploadResponse first = fixture.service.upload("2026/2027", "Математика",
-                PaScopeType.CLASS, "7-А", PaLevel.BASIC, PaWorkType.EXIT,
+                PaScopeType.CLASS, "7-А", PaLevel.BASIC, PaWorkType.EXIT, 2,
                 List.of(file("textFiles", "вариант-1.docx", "WORK-1"),
                         file("textFiles", "вариант-2.docx", "WORK-2")),
                 List.of(), "ivanov", "Иванов Иван Иванович");
@@ -43,7 +43,7 @@ class PaWorkMaterialServiceTest {
         assertEquals(0, first.answerFilesUploaded());
 
         PaDtos.WorkMaterialUploadResponse second = fixture.service.upload("2026/2027", "Математика",
-                PaScopeType.CLASS, "7-А", PaLevel.BASIC, PaWorkType.EXIT,
+                PaScopeType.CLASS, "7-А", PaLevel.BASIC, PaWorkType.EXIT, 2,
                 List.of(), List.of(file("answerFiles", "ответы.xlsx", "ANSWERS")),
                 "petrova", "Петрова Анна Сергеевна");
 
@@ -52,6 +52,7 @@ class PaWorkMaterialServiceTest {
         PaDtos.WorkMaterialRow row = fixture.service.materials("2026/2027").get(0);
         assertEquals(2, row.textFiles().size());
         assertEquals(1, row.answerFiles().size());
+        assertEquals(2, row.variantCount());
         assertTrue(row.textFiles().stream().allMatch(file -> "Иванов Иван Иванович".equals(file.uploadedByFio())));
         assertEquals("Петрова Анна Сергеевна", row.answerFiles().get(0).uploadedByFio());
 
@@ -67,18 +68,19 @@ class PaWorkMaterialServiceTest {
     void oneCombinedFileIsAllowedAndSameNameIsUpdatedWithoutDuplicate() throws Exception {
         Fixture fixture = fixture();
         fixture.service.upload("2026/2027", "Русский язык", PaScopeType.PARALLEL, "9",
-                PaLevel.BASIC, PaWorkType.ENTRY,
+                PaLevel.BASIC, PaWorkType.ENTRY, 10,
                 List.of(file("textFiles", "все-варианты.pdf", "OLD")), List.of(),
                 "first", "Первый Автор");
 
         PaDtos.WorkMaterialFileRow before = fixture.service.materials("2026/2027").get(0).textFiles().get(0);
         fixture.service.upload("2026/2027", "Русский язык", PaScopeType.PARALLEL, "9",
-                PaLevel.BASIC, PaWorkType.ENTRY,
+                PaLevel.BASIC, PaWorkType.ENTRY, 12,
                 List.of(file("textFiles", "все-варианты.pdf", "NEW")), List.of(),
                 "second", "Второй Автор");
 
         PaDtos.WorkMaterialRow row = fixture.service.materials("2026/2027").get(0);
         assertEquals(1, row.textFiles().size());
+        assertEquals(12, row.variantCount());
         assertEquals(before.id(), row.textFiles().get(0).id());
         assertEquals("Второй Автор", row.textFiles().get(0).uploadedByFio());
         assertArrayEquals("NEW".getBytes(), fixture.service.loadAttachment(before.id()));
@@ -110,14 +112,19 @@ class PaWorkMaterialServiceTest {
 
         IllegalArgumentException badFormat = assertThrows(IllegalArgumentException.class, () ->
                 service.upload("2026/2027", "Физика", PaScopeType.PARALLEL, "8", PaLevel.BASIC,
-                        PaWorkType.EXIT, List.of(executable), List.of(), "u", "Пользователь"));
+                        PaWorkType.EXIT, 1, List.of(executable), List.of(), "u", "Пользователь"));
         assertTrue(badFormat.getMessage().contains("Недопустимый формат"));
 
         MockMultipartFile pdf = new MockMultipartFile("textFiles", "work.pdf", "application/pdf", new byte[]{1});
         IllegalArgumentException badClass = assertThrows(IllegalArgumentException.class, () ->
                 service.upload("2026/2027", "Физика", PaScopeType.CLASS, "8", PaLevel.BASIC,
-                        PaWorkType.EXIT, List.of(pdf), List.of(), "u", "Пользователь"));
+                        PaWorkType.EXIT, 1, List.of(pdf), List.of(), "u", "Пользователь"));
         assertTrue(badClass.getMessage().contains("номер и букву"));
+
+        IllegalArgumentException badVariantCount = assertThrows(IllegalArgumentException.class, () ->
+                service.upload("2026/2027", "Физика", PaScopeType.PARALLEL, "8", PaLevel.BASIC,
+                        PaWorkType.EXIT, 0, List.of(pdf), List.of(), "u", "Пользователь"));
+        assertTrue(badVariantCount.getMessage().contains("Количество вариантов"));
     }
 
     private Fixture fixture() {

@@ -10,12 +10,14 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.school.personalLoad.model.ContingentSnapshot;
 import org.school.personalLoad.model.ContingentStudent;
+import org.school.personalLoad.model.CurriculumPlanEntry;
 import org.school.personalLoad.model.TeacherDirectoryEntry;
 import org.school.personalLoad.pa.dto.PaDtos;
 import org.school.personalLoad.pa.model.PaLevel;
 import org.school.personalLoad.pa.model.PaReportVersion;
 import org.school.personalLoad.pa.model.PaScopeType;
 import org.school.personalLoad.pa.model.PaSpecImportLog;
+import org.school.personalLoad.pa.model.PaSpecification;
 import org.school.personalLoad.pa.model.PaWorkType;
 import org.school.personalLoad.pa.repository.PaClassLevelAssignmentRepository;
 import org.school.personalLoad.pa.repository.PaParticipationRepository;
@@ -41,12 +43,15 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
+import static org.junit.jupiter.api.Assertions.assertNotNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.atLeastOnce;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
+import org.mockito.ArgumentCaptor;
 
 @ExtendWith(MockitoExtension.class)
 class PaServiceImplTest {
@@ -75,6 +80,85 @@ class PaServiceImplTest {
     private ContingentStudentRepository contingentStudentRepository;
     @Mock
     private ManualLoadEntryRepository manualLoadEntryRepository;
+
+    @Test
+    void specificationTemplateContainsCurriculumListsAndProtectedInputRules() throws Exception {
+        when(curriculumPlanEntryRepository.findAllByAcademicYear("2025/2026"))
+                .thenReturn(List.of(curriculum("Математика", "7-А"), curriculum("Русский язык", "7-Б")));
+
+        byte[] bytes = service().generateSpecificationTemplate("2025/2026");
+
+        try (Workbook workbook = new XSSFWorkbook(new java.io.ByteArrayInputStream(bytes))) {
+            Sheet template = workbook.getSheet("Спецификация");
+            assertNotNull(template);
+            assertEquals("Предмет", template.getRow(4).getCell(0).getStringCellValue());
+            assertEquals("№ задания", template.getRow(17).getCell(0).getStringCellValue());
+            assertTrue(workbook.isSheetHidden(workbook.getSheetIndex("Справочники")));
+            assertNotNull(workbook.getName("PaSubjects"));
+            assertNotNull(workbook.getName("PaScopes"));
+            assertTrue(template.getDataValidations().size() >= 9);
+            String validationFormulas = template.getDataValidations().stream()
+                    .map(value -> String.valueOf(value.getValidationConstraint().getFormula1()))
+                    .collect(java.util.stream.Collectors.joining("|"));
+            assertTrue(validationFormulas.contains("PaSubjects"));
+            assertTrue(validationFormulas.contains("PaWorkTypes"));
+            assertTrue(validationFormulas.contains("PaGradingScales"));
+        }
+    }
+
+    @Test
+    void downloadedSpecificationTemplateCanBeFilledAndImportedBack() throws Exception {
+        String academicYear = "2025/2026";
+        CurriculumPlanEntry curriculum = curriculum("Математика", "7-А");
+        when(curriculumPlanEntryRepository.findAllByAcademicYear(academicYear)).thenReturn(List.of(curriculum));
+        when(specificationRepository.findAllByAcademicYearOrderBySubjectNameAscScopeTypeAscScopeValueAscLevelAscWorkTypeAsc(academicYear))
+                .thenReturn(List.of());
+        when(specificationRepository.save(any(PaSpecification.class))).thenAnswer(invocation -> invocation.getArgument(0));
+        PaServiceImpl service = service();
+        byte[] blankTemplate = service.generateSpecificationTemplate(academicYear);
+        byte[] completedTemplate;
+        try (Workbook workbook = new XSSFWorkbook(new java.io.ByteArrayInputStream(blankTemplate));
+             ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            Sheet sheet = workbook.getSheet("Спецификация");
+            sheet.getRow(4).getCell(1).setCellValue("Математика");
+            sheet.getRow(5).getCell(1).setCellValue("7-А");
+            sheet.getRow(6).getCell(1).setCellValue("Выходная работа");
+            sheet.getRow(7).getCell(1).setCellValue("Базовый");
+            sheet.getRow(8).getCell(1).setCellValue("20.05.2026");
+            sheet.getRow(11).getCell(1).setCellValue("Пятибалльная");
+            sheet.getRow(12).getCell(1).setCellValue(85);
+            sheet.getRow(13).getCell(1).setCellValue(65);
+            sheet.getRow(14).getCell(1).setCellValue(40);
+            Row task = sheet.getRow(18);
+            task.getCell(1).setCellValue("Дроби");
+            task.getCell(2).setCellValue("Выполняет действия с дробями");
+            task.getCell(3).setCellValue("Новое");
+            task.getCell(5).setCellValue(2);
+            workbook.write(out);
+            completedTemplate = out.toByteArray();
+        }
+        String fileName = "spec-template-roundtrip-" + System.nanoTime() + ".xlsx";
+        Path savedFile = Path.of("pa-specifications", "2025-2026", fileName);
+
+        try {
+            List<PaDtos.ImportResult> result = service.importSpecifications(
+                    academicYear,
+                    List.of(new MockMultipartFile("files", fileName,
+                            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", completedTemplate)),
+                    "tester");
+
+            assertEquals(1, result.get(0).importedSpecs());
+            assertEquals(1, result.get(0).importedTasks());
+            assertFalse(String.join(" ", result.get(0).warnings()).contains("Справочники"));
+            ArgumentCaptor<PaSpecification> specification = ArgumentCaptor.forClass(PaSpecification.class);
+            verify(specificationRepository, atLeastOnce()).save(specification.capture());
+            assertEquals(LocalDate.of(2026, 5, 20), specification.getValue().getWorkDate());
+            assertEquals("Математика", specification.getValue().getSubjectName());
+            verify(taskRepository).saveAll(any());
+        } finally {
+            Files.deleteIfExists(savedFile);
+        }
+    }
 
     @Test
     void uploadReportsKeepsGeneratedTemplateAndOtherTeacherUploadsActive() throws Exception {
@@ -242,5 +326,14 @@ class PaServiceImplTest {
         student.setClassName(className);
         student.setFullName(fio);
         return student;
+    }
+
+    private CurriculumPlanEntry curriculum(String subjectName, String className) {
+        CurriculumPlanEntry entry = new CurriculumPlanEntry();
+        entry.setAcademicYear("2025/2026");
+        entry.setSubjectName(subjectName);
+        entry.setClassName(className);
+        entry.setDeprecated(false);
+        return entry;
     }
 }

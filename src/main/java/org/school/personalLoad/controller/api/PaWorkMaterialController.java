@@ -44,6 +44,7 @@ public class PaWorkMaterialController {
                                                     @RequestParam String scopeValue,
                                                     @RequestParam PaLevel level,
                                                     @RequestParam PaWorkType workType,
+                                                    @RequestParam int variantCount,
                                                     @RequestParam(required = false) List<MultipartFile> textFiles,
                                                     @RequestParam(required = false) List<MultipartFile> answerFiles,
                                                     HttpSession session) throws Exception {
@@ -51,7 +52,7 @@ public class PaWorkMaterialController {
         String username = user == null ? "unknown" : user.getUsername();
         String fullName = user == null ? username : user.getFullName();
         return materialService.upload(resolveYear(academicYear), subjectName, scopeType, scopeValue, level,
-                workType, textFiles, answerFiles, username, fullName);
+                workType, variantCount, textFiles, answerFiles, username, fullName);
     }
 
     @GetMapping("/files/{fileId}/download")

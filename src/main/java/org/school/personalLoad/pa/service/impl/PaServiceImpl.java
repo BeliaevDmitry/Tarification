@@ -26,6 +26,7 @@ import org.springframework.web.multipart.MultipartFile;
 
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -50,6 +51,7 @@ public class PaServiceImpl implements PaService {
     private static final String PA_REPORT_STORAGE_DIR = "pa-reports";
     private static final String PA_SPEC_STORAGE_DIR = "pa-specifications";
     private static final int TEMPLATE_VARIANTS_COUNT = 6;
+    private static final int SPECIFICATION_TEMPLATE_TASK_ROWS = 50;
     private static final short PRESENCE_PRESENT_COLOR = IndexedColors.LIGHT_GREEN.getIndex();
     private static final short PRESENCE_ABSENT_COLOR = IndexedColors.ROSE.getIndex();
 
@@ -70,6 +72,269 @@ public class PaServiceImpl implements PaService {
                                   CellStyle subHeader,
                                   CellStyle body,
                                   CellStyle numericBody) {}
+
+    @Override
+    @Transactional(readOnly = true)
+    public byte[] generateSpecificationTemplate(String academicYear) throws IOException {
+        List<CurriculumPlanEntry> curriculum = academicYearVariants(academicYear).stream()
+                .flatMap(year -> curriculumPlanEntryRepository.findAllByAcademicYear(year).stream())
+                .filter(row -> !row.isDeprecated())
+                .toList();
+
+        Set<String> subjects = curriculum.stream()
+                .map(CurriculumPlanEntry::getSubjectName)
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(value -> !value.isBlank())
+                .collect(Collectors.toCollection(() -> new TreeSet<>(String.CASE_INSENSITIVE_ORDER)));
+        Set<String> classes = curriculum.stream()
+                .map(CurriculumPlanEntry::getClassName)
+                .filter(Objects::nonNull)
+                .map(String::trim)
+                .filter(value -> !value.isBlank())
+                .collect(Collectors.toCollection(() -> new TreeSet<>((left, right) -> {
+                    Integer leftParallel = parseParallel(left);
+                    Integer rightParallel = parseParallel(right);
+                    int byParallel = Comparator.nullsLast(Integer::compareTo).compare(leftParallel, rightParallel);
+                    return byParallel != 0 ? byParallel : left.compareToIgnoreCase(right);
+                })));
+        LinkedHashSet<String> scopes = new LinkedHashSet<>();
+        for (int parallel = 1; parallel <= 11; parallel++) {
+            scopes.add(String.valueOf(parallel));
+            int currentParallel = parallel;
+            classes.stream().filter(value -> Objects.equals(parseParallel(value), currentParallel)).forEach(scopes::add);
+        }
+
+        try (Workbook workbook = new XSSFWorkbook(); ByteArrayOutputStream out = new ByteArrayOutputStream()) {
+            Sheet sheet = workbook.createSheet("Спецификация");
+            Sheet references = workbook.createSheet("Справочники");
+            createSpecificationReferenceSheet(workbook, references, subjects, scopes);
+            createSpecificationTemplateSheet(workbook, sheet, academicYear);
+            workbook.setSheetHidden(workbook.getSheetIndex(references), true);
+            workbook.setActiveSheet(workbook.getSheetIndex(sheet));
+            workbook.write(out);
+            return out.toByteArray();
+        }
+    }
+
+    private void createSpecificationReferenceSheet(Workbook workbook,
+                                                   Sheet sheet,
+                                                   Set<String> subjects,
+                                                   Set<String> scopes) {
+        List<List<String>> lists = List.of(
+                subjects.isEmpty() ? List.of("Нет данных — сначала загрузите учебный план") : new ArrayList<>(subjects),
+                scopes.isEmpty() ? List.of("1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11") : new ArrayList<>(scopes),
+                List.of("Входная работа", "Промежуточная работа", "Выходная работа"),
+                List.of("Базовый", "Углублённый"),
+                List.of("Пятибалльная", "Зачёт / незачёт"),
+                List.of("Новое", "Повторение")
+        );
+        String[] headers = {"Список предметов", "Параллели и классы", "Типы работ", "Уровни", "Шкалы", "Типы заданий"};
+        String[] names = {"PaSubjects", "PaScopes", "PaWorkTypes", "PaLevels", "PaGradingScales", "PaTaskKinds"};
+        Row header = sheet.createRow(0);
+        for (int column = 0; column < lists.size(); column++) {
+            header.createCell(column).setCellValue(headers[column]);
+            List<String> values = lists.get(column);
+            for (int row = 0; row < values.size(); row++) {
+                Row valueRow = sheet.getRow(row + 1);
+                if (valueRow == null) valueRow = sheet.createRow(row + 1);
+                valueRow.createCell(column).setCellValue(values.get(row));
+            }
+            org.apache.poi.ss.usermodel.Name rangeName = workbook.createName();
+            rangeName.setNameName(names[column]);
+            rangeName.setRefersToFormula("'Справочники'!$" + CellReference.convertNumToColString(column)
+                    + "$2:$" + CellReference.convertNumToColString(column) + "$" + (values.size() + 1));
+        }
+    }
+
+    private void createSpecificationTemplateSheet(Workbook workbook, Sheet sheet, String academicYear) {
+        Font titleFont = workbook.createFont();
+        titleFont.setBold(true);
+        titleFont.setFontHeightInPoints((short) 16);
+        titleFont.setColor(IndexedColors.WHITE.getIndex());
+        CellStyle titleStyle = workbook.createCellStyle();
+        titleStyle.setFont(titleFont);
+        titleStyle.setFillForegroundColor(IndexedColors.DARK_BLUE.getIndex());
+        titleStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        titleStyle.setAlignment(HorizontalAlignment.CENTER);
+        titleStyle.setVerticalAlignment(VerticalAlignment.CENTER);
+
+        Font boldFont = workbook.createFont();
+        boldFont.setBold(true);
+        CellStyle labelStyle = workbook.createCellStyle();
+        labelStyle.setFont(boldFont);
+        labelStyle.setFillForegroundColor(IndexedColors.PALE_BLUE.getIndex());
+        labelStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        applyThinBorders(labelStyle);
+
+        CellStyle inputStyle = workbook.createCellStyle();
+        inputStyle.setFillForegroundColor(IndexedColors.LIGHT_YELLOW.getIndex());
+        inputStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        inputStyle.setWrapText(true);
+        applyThinBorders(inputStyle);
+
+        CellStyle dateStyle = workbook.createCellStyle();
+        dateStyle.cloneStyleFrom(inputStyle);
+        dateStyle.setDataFormat(workbook.createDataFormat().getFormat("dd.mm.yyyy"));
+
+        Font headerFont = workbook.createFont();
+        headerFont.setBold(true);
+        headerFont.setColor(IndexedColors.WHITE.getIndex());
+        CellStyle tableHeaderStyle = workbook.createCellStyle();
+        tableHeaderStyle.setFont(headerFont);
+        tableHeaderStyle.setFillForegroundColor(IndexedColors.DARK_BLUE.getIndex());
+        tableHeaderStyle.setFillPattern(FillPatternType.SOLID_FOREGROUND);
+        tableHeaderStyle.setAlignment(HorizontalAlignment.CENTER);
+        tableHeaderStyle.setVerticalAlignment(VerticalAlignment.CENTER);
+        tableHeaderStyle.setWrapText(true);
+        applyThinBorders(tableHeaderStyle);
+
+        CellStyle taskStyle = workbook.createCellStyle();
+        taskStyle.setVerticalAlignment(VerticalAlignment.TOP);
+        taskStyle.setWrapText(true);
+        applyThinBorders(taskStyle);
+
+        Row title = sheet.createRow(0);
+        title.setHeightInPoints(28);
+        Cell titleCell = title.createCell(0);
+        titleCell.setCellValue("Шаблон спецификации проверочной работы ПА");
+        titleCell.setCellStyle(titleStyle);
+        sheet.addMergedRegion(new CellRangeAddress(0, 0, 0, 5));
+        for (int column = 1; column <= 5; column++) title.createCell(column).setCellStyle(titleStyle);
+
+        Row instruction = sheet.createRow(1);
+        instruction.setHeightInPoints(34);
+        Cell instructionCell = instruction.createCell(0);
+        instructionCell.setCellValue("Заполните жёлтые поля. Значения со стрелкой выбирайте из списка. Для пятибалльной шкалы заполните пороги 5/4/3, для зачётной — только порог «Зачёт». Затем загрузите этот файл обратно в раздел «Спецификации».");
+        instructionCell.setCellStyle(inputStyle);
+        sheet.addMergedRegion(new CellRangeAddress(1, 1, 0, 5));
+        for (int column = 1; column <= 5; column++) instruction.createCell(column).setCellStyle(inputStyle);
+
+        writeSpecificationField(sheet, 3, "Учебный год", academicYear, labelStyle, inputStyle);
+        writeSpecificationField(sheet, 4, "Предмет", "", labelStyle, inputStyle);
+        writeSpecificationField(sheet, 5, "Параллель/Класс", "", labelStyle, inputStyle);
+        writeSpecificationField(sheet, 6, "Тип", "", labelStyle, inputStyle);
+        writeSpecificationField(sheet, 7, "Уровень", "Базовый", labelStyle, inputStyle);
+        writeSpecificationField(sheet, 8, "Дата работы", "", labelStyle, dateStyle);
+        writeSpecificationField(sheet, 9, "Школа", "", labelStyle, inputStyle);
+        writeSpecificationField(sheet, 10, "Учитель", "", labelStyle, inputStyle);
+        writeSpecificationField(sheet, 11, "Шкала оценивания", "Пятибалльная", labelStyle, inputStyle);
+        writeSpecificationField(sheet, 12, "5", "", labelStyle, inputStyle);
+        writeSpecificationField(sheet, 13, "4", "", labelStyle, inputStyle);
+        writeSpecificationField(sheet, 14, "3", "", labelStyle, inputStyle);
+        writeSpecificationField(sheet, 15, "Зачёт", "", labelStyle, inputStyle);
+
+        String[] taskHeaders = {"№ задания", "Тема задания", "Навык", "Тип задания", "Если повторение, то какое", "Балл за задание"};
+        Row taskHeader = sheet.createRow(17);
+        taskHeader.setHeightInPoints(34);
+        for (int column = 0; column < taskHeaders.length; column++) {
+            Cell cell = taskHeader.createCell(column);
+            cell.setCellValue(taskHeaders[column]);
+            cell.setCellStyle(tableHeaderStyle);
+        }
+        for (int index = 0; index < SPECIFICATION_TEMPLATE_TASK_ROWS; index++) {
+            Row row = sheet.createRow(18 + index);
+            row.setHeightInPoints(30);
+            for (int column = 0; column < taskHeaders.length; column++) {
+                Cell cell = row.createCell(column);
+                cell.setCellStyle(taskStyle);
+                if (column == 0) cell.setCellValue(index + 1);
+            }
+        }
+
+        addNamedListValidation(sheet, "PaSubjects", 4, 4, 1, 1, "Выберите предмет из учебного плана");
+        addNamedListValidation(sheet, "PaScopes", 5, 5, 1, 1, "Выберите параллель или конкретный класс");
+        addNamedListValidation(sheet, "PaWorkTypes", 6, 6, 1, 1, "Выберите тип работы");
+        addNamedListValidation(sheet, "PaLevels", 7, 7, 1, 1, "Выберите уровень");
+        addNamedListValidation(sheet, "PaGradingScales", 11, 11, 1, 1, "Выберите шкалу оценивания");
+        addNamedListValidation(sheet, "PaTaskKinds", 18, 17 + SPECIFICATION_TEMPLATE_TASK_ROWS, 3, 3, "Выберите тип задания");
+        addIntegerValidation(sheet, 12, 15, 1, 1, 0, 100, "Укажите процент от 0 до 100");
+        addIntegerValidation(sheet, 18, 17 + SPECIFICATION_TEMPLATE_TASK_ROWS, 4, 4, 1, SPECIFICATION_TEMPLATE_TASK_ROWS, "Укажите номер исходного задания");
+        addIntegerValidation(sheet, 18, 17 + SPECIFICATION_TEMPLATE_TASK_ROWS, 5, 5, 1, 100, "Укажите максимальный балл");
+
+        sheet.setColumnWidth(0, 18 * 256);
+        sheet.setColumnWidth(1, 34 * 256);
+        sheet.setColumnWidth(2, 42 * 256);
+        sheet.setColumnWidth(3, 20 * 256);
+        sheet.setColumnWidth(4, 26 * 256);
+        sheet.setColumnWidth(5, 18 * 256);
+        sheet.createFreezePane(0, 18);
+        sheet.setRepeatingRows(new CellRangeAddress(17, 17, -1, -1));
+        sheet.setAutobreaks(true);
+        sheet.getPrintSetup().setLandscape(true);
+        sheet.getPrintSetup().setFitWidth((short) 1);
+        sheet.setFitToPage(true);
+        sheet.setSelected(true);
+    }
+
+    private void writeSpecificationField(Sheet sheet,
+                                         int rowIndex,
+                                         String label,
+                                         String value,
+                                         CellStyle labelStyle,
+                                         CellStyle valueStyle) {
+        Row row = sheet.createRow(rowIndex);
+        Cell labelCell = row.createCell(0);
+        labelCell.setCellValue(label);
+        labelCell.setCellStyle(labelStyle);
+        Cell valueCell = row.createCell(1);
+        valueCell.setCellValue(value);
+        valueCell.setCellStyle(valueStyle);
+    }
+
+    private void applyThinBorders(CellStyle style) {
+        style.setBorderTop(BorderStyle.THIN);
+        style.setBorderRight(BorderStyle.THIN);
+        style.setBorderBottom(BorderStyle.THIN);
+        style.setBorderLeft(BorderStyle.THIN);
+    }
+
+    private void addNamedListValidation(Sheet sheet,
+                                        String rangeName,
+                                        int firstRow,
+                                        int lastRow,
+                                        int firstColumn,
+                                        int lastColumn,
+                                        String prompt) {
+        DataValidationHelper helper = sheet.getDataValidationHelper();
+        DataValidationConstraint constraint = helper.createFormulaListConstraint(rangeName);
+        addValidation(sheet, helper, constraint, firstRow, lastRow, firstColumn, lastColumn, prompt);
+    }
+
+    private void addIntegerValidation(Sheet sheet,
+                                      int firstRow,
+                                      int lastRow,
+                                      int firstColumn,
+                                      int lastColumn,
+                                      int min,
+                                      int max,
+                                      String prompt) {
+        DataValidationHelper helper = sheet.getDataValidationHelper();
+        DataValidationConstraint constraint = helper.createIntegerConstraint(
+                DataValidationConstraint.OperatorType.BETWEEN,
+                String.valueOf(min),
+                String.valueOf(max));
+        addValidation(sheet, helper, constraint, firstRow, lastRow, firstColumn, lastColumn, prompt);
+    }
+
+    private void addValidation(Sheet sheet,
+                               DataValidationHelper helper,
+                               DataValidationConstraint constraint,
+                               int firstRow,
+                               int lastRow,
+                               int firstColumn,
+                               int lastColumn,
+                               String prompt) {
+        DataValidation validation = helper.createValidation(
+                constraint,
+                new CellRangeAddressList(firstRow, lastRow, firstColumn, lastColumn));
+        validation.setEmptyCellAllowed(true);
+        validation.setShowErrorBox(true);
+        validation.createErrorBox("Некорректное значение", prompt);
+        validation.setShowPromptBox(true);
+        validation.createPromptBox("Заполнение шаблона", prompt);
+        sheet.addValidationData(validation);
+    }
 
     @Override
     @Transactional
@@ -95,6 +360,7 @@ public class PaServiceImpl implements PaService {
                     Files.write(PaStoragePath.resolveUploadedFile(specDir, file.getOriginalFilename()), file.getBytes());
                 }
                 for (int i = 0; i < workbook.getNumberOfSheets(); i++) {
+                    if (workbook.isSheetHidden(i) || workbook.isSheetVeryHidden(i)) continue;
                     Sheet sheet = workbook.getSheetAt(i);
                     SheetImportStats stats = importSheet(academicYear, file.getOriginalFilename(), sheet, warnings);
                     importedSpecs += stats.specs();
@@ -313,6 +579,15 @@ public class PaServiceImpl implements PaService {
 
         String levelRaw = findValueNearLabel(sheet, baseRow, baseCol, blockEndCol, "Уровень");
         PaLevel level = parseLevel(levelRaw);
+        String workDateRaw = findValueNearLabel(sheet, baseRow, baseCol, blockEndCol, "Дата работы");
+        if (workDateRaw.isBlank()) {
+            workDateRaw = findValueNearLabel(sheet, baseRow, baseCol, blockEndCol, "Дата написания работы");
+        }
+        LocalDate workDate = parseLocalDate(workDateRaw);
+        if (!workDateRaw.isBlank() && workDate == null) {
+            warnings.add("Лист " + sheet.getSheetName() + ": некорректная дата работы '" + workDateRaw + "'");
+            return null;
+        }
 
         PaSpecification spec = new PaSpecification();
         spec.setAcademicYear(academicYear);
@@ -321,6 +596,7 @@ public class PaServiceImpl implements PaService {
         spec.setScopeType(detectScopeType(scope));
         spec.setWorkType(workType);
         spec.setLevel(level);
+        spec.setWorkDate(workDate);
         spec.setSchoolName(findValueNearLabel(sheet, baseRow, baseCol, blockEndCol, "Школа"));
         spec.setTeacherFio(findValueNearLabel(sheet, baseRow, baseCol, blockEndCol, "Учитель"));
         spec.setTeacherFioNormalized(normalizeFio(spec.getTeacherFio()));
@@ -329,12 +605,11 @@ public class PaServiceImpl implements PaService {
         spec.setGrade3Percent(resolveThresholdPercent(sheet, baseRow, baseCol, blockEndCol, "3"));
         Integer passPercent = resolveThresholdPercent(sheet, baseRow, baseCol, blockEndCol, "Зачёт");
         if (passPercent == null) passPercent = resolveThresholdPercent(sheet, baseRow, baseCol, blockEndCol, "Зачет");
-        if (passPercent != null) {
-            spec.setGradingScale(PaGradingScale.PASS_FAIL);
-            spec.setPassPercent(passPercent);
-        } else {
-            spec.setGradingScale(PaGradingScale.FIVE_POINT);
-        }
+        PaGradingScale selectedScale = parseGradingScale(findValueNearLabel(sheet, baseRow, baseCol, blockEndCol, "Шкала оценивания"));
+        spec.setGradingScale(selectedScale == null
+                ? (passPercent == null ? PaGradingScale.FIVE_POINT : PaGradingScale.PASS_FAIL)
+                : selectedScale);
+        spec.setPassPercent(passPercent);
         spec.setSourceFileName(sourceFileName);
         spec.setPairKey(buildPairKey(academicYear, subject, scope, level, workType, sheet.getSheetName()));
         spec.setActiveVersion(true);
@@ -2032,6 +2307,13 @@ public class PaServiceImpl implements PaService {
         String value = normalize(raw);
         if (value.contains("углуб")) return PaLevel.ADVANCED;
         return PaLevel.BASIC;
+    }
+
+    private PaGradingScale parseGradingScale(String raw) {
+        String value = normalize(raw);
+        if (value.contains("зач")) return PaGradingScale.PASS_FAIL;
+        if (value.contains("пятибал") || value.equals("5")) return PaGradingScale.FIVE_POINT;
+        return null;
     }
 
     private PaTaskKind parseTaskKind(String raw) {
