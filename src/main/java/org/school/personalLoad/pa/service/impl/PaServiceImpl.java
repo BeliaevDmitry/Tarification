@@ -173,10 +173,6 @@ public class PaServiceImpl implements PaService {
         inputStyle.setWrapText(true);
         applyThinBorders(inputStyle);
 
-        CellStyle dateStyle = workbook.createCellStyle();
-        dateStyle.cloneStyleFrom(inputStyle);
-        dateStyle.setDataFormat(workbook.createDataFormat().getFormat("dd.mm.yyyy"));
-
         Font headerFont = workbook.createFont();
         headerFont.setBold(true);
         headerFont.setColor(IndexedColors.WHITE.getIndex());
@@ -215,17 +211,15 @@ public class PaServiceImpl implements PaService {
         writeSpecificationField(sheet, 5, "Параллель/Класс", "", labelStyle, inputStyle);
         writeSpecificationField(sheet, 6, "Тип", "", labelStyle, inputStyle);
         writeSpecificationField(sheet, 7, "Уровень", "Базовый", labelStyle, inputStyle);
-        writeSpecificationField(sheet, 8, "Дата работы", "", labelStyle, dateStyle);
-        writeSpecificationField(sheet, 9, "Школа", "", labelStyle, inputStyle);
-        writeSpecificationField(sheet, 10, "Учитель", "", labelStyle, inputStyle);
-        writeSpecificationField(sheet, 11, "Шкала оценивания", "Пятибалльная", labelStyle, inputStyle);
-        writeSpecificationField(sheet, 12, "5", "", labelStyle, inputStyle);
-        writeSpecificationField(sheet, 13, "4", "", labelStyle, inputStyle);
-        writeSpecificationField(sheet, 14, "3", "", labelStyle, inputStyle);
-        writeSpecificationField(sheet, 15, "Зачёт", "", labelStyle, inputStyle);
+        writeSpecificationField(sheet, 8, "Школа", "", labelStyle, inputStyle);
+        writeSpecificationField(sheet, 9, "Шкала оценивания", "Пятибалльная", labelStyle, inputStyle);
+        writeSpecificationField(sheet, 10, "5", "", labelStyle, inputStyle);
+        writeSpecificationField(sheet, 11, "4", "", labelStyle, inputStyle);
+        writeSpecificationField(sheet, 12, "3", "", labelStyle, inputStyle);
+        writeSpecificationField(sheet, 13, "Зачёт", "", labelStyle, inputStyle);
 
         String[] taskHeaders = {"№ задания", "Тема задания", "Навык", "Тип задания", "Если повторение, то какое", "Балл за задание"};
-        Row taskHeader = sheet.createRow(17);
+        Row taskHeader = sheet.createRow(15);
         taskHeader.setHeightInPoints(34);
         for (int column = 0; column < taskHeaders.length; column++) {
             Cell cell = taskHeader.createCell(column);
@@ -233,7 +227,7 @@ public class PaServiceImpl implements PaService {
             cell.setCellStyle(tableHeaderStyle);
         }
         for (int index = 0; index < SPECIFICATION_TEMPLATE_TASK_ROWS; index++) {
-            Row row = sheet.createRow(18 + index);
+            Row row = sheet.createRow(16 + index);
             row.setHeightInPoints(30);
             for (int column = 0; column < taskHeaders.length; column++) {
                 Cell cell = row.createCell(column);
@@ -246,11 +240,11 @@ public class PaServiceImpl implements PaService {
         addNamedListValidation(sheet, "PaScopes", 5, 5, 1, 1, "Выберите параллель или конкретный класс");
         addNamedListValidation(sheet, "PaWorkTypes", 6, 6, 1, 1, "Выберите тип работы");
         addNamedListValidation(sheet, "PaLevels", 7, 7, 1, 1, "Выберите уровень");
-        addNamedListValidation(sheet, "PaGradingScales", 11, 11, 1, 1, "Выберите шкалу оценивания");
-        addNamedListValidation(sheet, "PaTaskKinds", 18, 17 + SPECIFICATION_TEMPLATE_TASK_ROWS, 3, 3, "Выберите тип задания");
-        addIntegerValidation(sheet, 12, 15, 1, 1, 0, 100, "Укажите процент от 0 до 100");
-        addIntegerValidation(sheet, 18, 17 + SPECIFICATION_TEMPLATE_TASK_ROWS, 4, 4, 1, SPECIFICATION_TEMPLATE_TASK_ROWS, "Укажите номер исходного задания");
-        addIntegerValidation(sheet, 18, 17 + SPECIFICATION_TEMPLATE_TASK_ROWS, 5, 5, 1, 100, "Укажите максимальный балл");
+        addNamedListValidation(sheet, "PaGradingScales", 9, 9, 1, 1, "Выберите шкалу оценивания");
+        addNamedListValidation(sheet, "PaTaskKinds", 16, 15 + SPECIFICATION_TEMPLATE_TASK_ROWS, 3, 3, "Выберите тип задания");
+        addIntegerValidation(sheet, 10, 13, 1, 1, 0, 100, "Укажите процент от 0 до 100");
+        addIntegerValidation(sheet, 16, 15 + SPECIFICATION_TEMPLATE_TASK_ROWS, 4, 4, 1, SPECIFICATION_TEMPLATE_TASK_ROWS, "Укажите номер исходного задания");
+        addIntegerValidation(sheet, 16, 15 + SPECIFICATION_TEMPLATE_TASK_ROWS, 5, 5, 1, 100, "Укажите максимальный балл");
 
         sheet.setColumnWidth(0, 18 * 256);
         sheet.setColumnWidth(1, 34 * 256);
@@ -258,8 +252,6 @@ public class PaServiceImpl implements PaService {
         sheet.setColumnWidth(3, 20 * 256);
         sheet.setColumnWidth(4, 26 * 256);
         sheet.setColumnWidth(5, 18 * 256);
-        sheet.createFreezePane(0, 18);
-        sheet.setRepeatingRows(new CellRangeAddress(17, 17, -1, -1));
         sheet.setAutobreaks(true);
         sheet.getPrintSetup().setLandscape(true);
         sheet.getPrintSetup().setFitWidth((short) 1);

@@ -44,6 +44,7 @@ import java.util.Optional;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 import static org.mockito.ArgumentMatchers.any;
@@ -92,7 +93,17 @@ class PaServiceImplTest {
             Sheet template = workbook.getSheet("Спецификация");
             assertNotNull(template);
             assertEquals("Предмет", template.getRow(4).getCell(0).getStringCellValue());
-            assertEquals("№ задания", template.getRow(17).getCell(0).getStringCellValue());
+            assertEquals("№ задания", template.getRow(15).getCell(0).getStringCellValue());
+            assertNull(template.getPaneInformation(), "В шаблоне не должно быть закреплённых строк");
+            List<String> fieldLabels = java.util.stream.IntStream.rangeClosed(3, 13)
+                    .mapToObj(row -> template.getRow(row))
+                    .filter(java.util.Objects::nonNull)
+                    .map(row -> row.getCell(0))
+                    .filter(java.util.Objects::nonNull)
+                    .map(cell -> cell.getStringCellValue())
+                    .toList();
+            assertFalse(fieldLabels.contains("Учитель"));
+            assertFalse(fieldLabels.contains("Дата работы"));
             assertTrue(workbook.isSheetHidden(workbook.getSheetIndex("Справочники")));
             assertNotNull(workbook.getName("PaSubjects"));
             assertNotNull(workbook.getName("PaScopes"));
@@ -124,12 +135,11 @@ class PaServiceImplTest {
             sheet.getRow(5).getCell(1).setCellValue("7-А");
             sheet.getRow(6).getCell(1).setCellValue("Выходная работа");
             sheet.getRow(7).getCell(1).setCellValue("Базовый");
-            sheet.getRow(8).getCell(1).setCellValue("20.05.2026");
-            sheet.getRow(11).getCell(1).setCellValue("Пятибалльная");
-            sheet.getRow(12).getCell(1).setCellValue(85);
-            sheet.getRow(13).getCell(1).setCellValue(65);
-            sheet.getRow(14).getCell(1).setCellValue(40);
-            Row task = sheet.getRow(18);
+            sheet.getRow(9).getCell(1).setCellValue("Пятибалльная");
+            sheet.getRow(10).getCell(1).setCellValue(85);
+            sheet.getRow(11).getCell(1).setCellValue(65);
+            sheet.getRow(12).getCell(1).setCellValue(40);
+            Row task = sheet.getRow(16);
             task.getCell(1).setCellValue("Дроби");
             task.getCell(2).setCellValue("Выполняет действия с дробями");
             task.getCell(3).setCellValue("Новое");
@@ -152,7 +162,7 @@ class PaServiceImplTest {
             assertFalse(String.join(" ", result.get(0).warnings()).contains("Справочники"));
             ArgumentCaptor<PaSpecification> specification = ArgumentCaptor.forClass(PaSpecification.class);
             verify(specificationRepository, atLeastOnce()).save(specification.capture());
-            assertEquals(LocalDate.of(2026, 5, 20), specification.getValue().getWorkDate());
+            assertNull(specification.getValue().getWorkDate());
             assertEquals("Математика", specification.getValue().getSubjectName());
             verify(taskRepository).saveAll(any());
         } finally {
