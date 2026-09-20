@@ -37,6 +37,18 @@ public class PaController {
     private final PaService paService;
     private final AcademicYearService academicYearService;
 
+    @GetMapping("/specifications/template")
+    public ResponseEntity<byte[]> downloadSpecificationTemplate(@RequestParam(required = false) String academicYear) throws Exception {
+        String year = academicYearService.resolveRequestedOrDefault(academicYear);
+        byte[] body = paService.generateSpecificationTemplate(year);
+        String fileName = "Шаблон_спецификации_ПА_" + year.replace('/', '-').replace('\\', '-') + ".xlsx";
+        String encodedFileName = URLEncoder.encode(fileName, StandardCharsets.UTF_8).replace("+", "%20");
+        return ResponseEntity.ok()
+                .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename*=UTF-8''" + encodedFileName)
+                .contentType(MediaType.parseMediaType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"))
+                .body(body);
+    }
+
     @PostMapping("/specifications/import")
     public ResponseEntity<List<PaDtos.ImportResult>> importSpecifications(@RequestParam("files") List<MultipartFile> files,
                                                                           @RequestParam(required = false) String academicYear,

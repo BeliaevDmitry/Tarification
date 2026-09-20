@@ -838,6 +838,12 @@ async function uploadSpecifications() {
     }
 }
 
+function downloadSpecificationTemplate() {
+    const raw = '/api/pa/specifications/template';
+    const url = typeof window.withAcademicYear === 'function' ? window.withAcademicYear(raw) : raw;
+    window.location.assign(url);
+}
+
 
 async function loadSpecificationImportLog() {
     try {
@@ -1296,6 +1302,7 @@ const bindChange = (id, handler) => {
     if (el) el.addEventListener('change', handler);
 };
 bindClick('pa-spec-import-btn', uploadSpecifications);
+bindClick('pa-spec-template-btn', downloadSpecificationTemplate);
 bindClick('pa-spec-reload-btn', reloadSummaryAndSpecs);
 bindClick('pa-entry-upload-btn', () => uploadReports('entry'));
 bindClick('pa-exit-upload-btn', () => uploadReports('exit'));

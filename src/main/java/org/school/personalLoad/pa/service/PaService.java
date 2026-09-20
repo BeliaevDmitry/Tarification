@@ -11,6 +11,7 @@ import java.time.LocalDate;
 import java.util.List;
 
 public interface PaService {
+    byte[] generateSpecificationTemplate(String academicYear) throws IOException;
     List<PaDtos.ImportResult> importSpecifications(String academicYear, List<MultipartFile> files, String username);
     List<PaDtos.ImportLogRow> specificationImportLog(String academicYear, String username, boolean admin);
     byte[] loadSpecificationImportLogFile(String academicYear, Long importLogId, String username, boolean admin) throws IOException;
