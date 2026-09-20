@@ -2,6 +2,8 @@ package org.school.personalLoad.controller.api;
 
 import lombok.RequiredArgsConstructor;
 import org.school.personalLoad.auth.SessionUser;
+import org.school.personalLoad.auth.AppTab;
+import org.school.personalLoad.auth.AuthExceptions.ForbiddenException;
 import org.school.personalLoad.pa.dto.PaDtos;
 import org.school.personalLoad.pa.model.PaLevel;
 import org.school.personalLoad.pa.model.PaScopeType;
@@ -51,8 +53,34 @@ public class PaWorkMaterialController {
         SessionUser user = session == null ? null : (SessionUser) session.getAttribute(SessionUser.SESSION_KEY);
         String username = user == null ? "unknown" : user.getUsername();
         String fullName = user == null ? username : user.getFullName();
-        return materialService.upload(resolveYear(academicYear), subjectName, scopeType, scopeValue, level,
+        String year = resolveYear(academicYear);
+        requirePastYearEdit(year, user);
+        return materialService.upload(year, subjectName, scopeType, scopeValue, level,
                 workType, variantCount, textFiles, answerFiles, username, fullName);
+    }
+
+    @PutMapping("/{materialId}")
+    public PaDtos.WorkMaterialUploadResponse update(@PathVariable Long materialId,
+                                                    @RequestParam int variantCount,
+                                                    @RequestParam(defaultValue = "false") boolean replaceTextFiles,
+                                                    @RequestParam(defaultValue = "false") boolean replaceAnswerFiles,
+                                                    @RequestParam(required = false) List<MultipartFile> textFiles,
+                                                    @RequestParam(required = false) List<MultipartFile> answerFiles,
+                                                    HttpSession session) throws Exception {
+        SessionUser user = session == null ? null : (SessionUser) session.getAttribute(SessionUser.SESSION_KEY);
+        requirePastYearEdit(materialService.academicYear(materialId), user);
+        String username = user == null ? "unknown" : user.getUsername();
+        String fullName = user == null ? username : user.getFullName();
+        return materialService.update(materialId, variantCount, replaceTextFiles, replaceAnswerFiles,
+                textFiles, answerFiles, username, fullName);
+    }
+
+    @DeleteMapping("/{materialId}")
+    public ResponseEntity<Void> delete(@PathVariable Long materialId, HttpSession session) throws Exception {
+        SessionUser user = session == null ? null : (SessionUser) session.getAttribute(SessionUser.SESSION_KEY);
+        requirePastYearEdit(materialService.academicYear(materialId), user);
+        materialService.delete(materialId);
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/files/{fileId}/download")
@@ -70,6 +98,16 @@ public class PaWorkMaterialController {
 
     private String resolveYear(String academicYear) {
         return academicYearService.resolveRequestedOrDefault(academicYear);
+    }
+
+    private void requirePastYearEdit(String academicYear, SessionUser user) {
+        java.util.regex.Matcher requested = java.util.regex.Pattern.compile("^(\\d{4})/").matcher(String.valueOf(academicYear));
+        java.util.regex.Matcher current = java.util.regex.Pattern.compile("^(\\d{4})/").matcher(academicYearService.currentByDate());
+        if (requested.find() && current.find()
+                && Integer.parseInt(requested.group(1)) < Integer.parseInt(current.group(1))
+                && (user == null || !user.canEditTab(AppTab.EDIT_PAST_ACADEMIC_YEARS))) {
+            throw new ForbiddenException("Редактирование данных прошлого учебного года запрещено. Администратор может выдать отдельное право в настройках пользователя");
+        }
     }
 
     static ResponseEntity<byte[]> attachment(byte[] body, String fileName, MediaType mediaType) {

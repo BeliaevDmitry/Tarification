@@ -46,6 +46,10 @@ class PermissionStructureTest {
         assertTrue(script.contains("label: 'Качество образования'"));
         assertTrue(script.contains("key: 'LOAD_SALARY'"));
         assertTrue(script.contains("key: 'OGE_MISMATCH_VIEW'"));
+        assertTrue(script.contains("key: 'EDIT_PAST_ACADEMIC_YEARS'"));
+        String authScript = Files.readString(Path.of("src/main/resources/static/auth.js"));
+        assertTrue(authScript.contains("isPastAcademicYearSelected"));
+        assertTrue(authScript.contains("EDIT_PAST_ACADEMIC_YEARS"));
     }
 
     @Test

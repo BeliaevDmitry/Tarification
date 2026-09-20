@@ -121,36 +121,121 @@ public class PaWorkMaterialService {
         answers.forEach(file -> validateFile(file, "ответов"));
 
         String normalizedScope = normalizeScope(scopeType, scopeValue);
-        PaWorkMaterial material = materialRepository
+        Optional<PaWorkMaterial> existingMaterial = materialRepository
                 .findFirstByAcademicYearAndSubjectNameAndScopeTypeAndScopeValueAndLevelAndWorkTypeOrderByUpdatedAtDesc(
-                        year, subject, scopeType, normalizedScope, level, workType)
-                .orElseGet(PaWorkMaterial::new);
+                        year, subject, scopeType, normalizedScope, level, workType);
+        if (existingMaterial.isPresent()) {
+            throw new IllegalArgumentException("Такой комплект уже есть в реестре. Откройте вкладку «Реестр файлов» и нажмите «Редактировать», чтобы добавить или заменить файлы");
+        }
+        PaWorkMaterial material = new PaWorkMaterial();
         LocalDateTime now = LocalDateTime.now();
         material.setVariantCount(variantCount);
-        if (material.getId() == null) {
-            material.setAcademicYear(year);
-            material.setSubjectName(subject);
-            material.setScopeType(scopeType);
-            material.setScopeValue(normalizedScope);
-            material.setLevel(level);
-            material.setWorkType(workType);
-            material.setCreatedAt(now);
-            material.setUpdatedAt(now);
-            material = materialRepository.saveAndFlush(material);
-        }
+        material.setAcademicYear(year);
+        material.setSubjectName(subject);
+        material.setScopeType(scopeType);
+        material.setScopeValue(normalizedScope);
+        material.setLevel(level);
+        material.setWorkType(workType);
+        material.setCreatedAt(now);
+        material.setUpdatedAt(now);
+        material = materialRepository.saveAndFlush(material);
 
         Path directory = yearDirectory(year);
         Files.createDirectories(directory);
         migrateLegacyFiles(material);
         for (MultipartFile file : texts) {
-            storeAttachment(material, PaWorkMaterialFileKind.TEXT, file, username, uploaderFio, now, directory);
+            storeAttachment(material, PaWorkMaterialFileKind.TEXT, file, username, uploaderFio, now, directory, false);
         }
         for (MultipartFile file : answers) {
-            storeAttachment(material, PaWorkMaterialFileKind.ANSWERS, file, username, uploaderFio, now, directory);
+            storeAttachment(material, PaWorkMaterialFileKind.ANSWERS, file, username, uploaderFio, now, directory, false);
         }
         material.setUpdatedAt(now);
         material = materialRepository.saveAndFlush(material);
         String message = "Загружено файлов: " + (texts.size() + answers.size())
+                + " (тексты: " + texts.size() + ", ответы: " + answers.size() + ")";
+        return new PaDtos.WorkMaterialUploadResponse(material.getId(), texts.size(), answers.size(), message);
+    }
+
+    @Transactional(readOnly = true)
+    public String academicYear(Long materialId) {
+        return requireMaterial(materialId).getAcademicYear();
+    }
+
+    @Transactional
+    public void delete(Long materialId) throws IOException {
+        PaWorkMaterial material = requireMaterial(materialId);
+        Path directory = yearDirectory(material.getAcademicYear());
+        migrateLegacyFiles(material);
+        List<PaWorkMaterialFile> attachments = fileRepository
+                .findAllByMaterialIdOrderByKindAscOriginalFileNameAscIdAsc(materialId);
+        LinkedHashSet<String> storedNames = attachments.stream()
+                .map(PaWorkMaterialFile::getStoredFileName)
+                .filter(name -> !blank(name).isBlank())
+                .collect(java.util.stream.Collectors.toCollection(LinkedHashSet::new));
+        if (!blank(material.getTextStoredFileName()).isBlank()) storedNames.add(material.getTextStoredFileName());
+        if (!blank(material.getAnswersStoredFileName()).isBlank()) storedNames.add(material.getAnswersStoredFileName());
+        fileRepository.deleteAll(attachments);
+        fileRepository.flush();
+        materialRepository.delete(material);
+        materialRepository.flush();
+        for (String storedName : storedNames) {
+            Files.deleteIfExists(PaStoragePath.resolveUploadedFile(directory, storedName));
+        }
+    }
+
+    @Transactional
+    public PaDtos.WorkMaterialUploadResponse update(Long materialId,
+                                                    int variantCount,
+                                                    boolean replaceTextFiles,
+                                                    boolean replaceAnswerFiles,
+                                                    List<MultipartFile> textFiles,
+                                                    List<MultipartFile> answerFiles,
+                                                    String username,
+                                                    String uploaderFio) throws IOException {
+        PaWorkMaterial material = requireMaterial(materialId);
+        if (variantCount < 1 || variantCount > 999) {
+            throw new IllegalArgumentException("Количество вариантов должно быть от 1 до 999");
+        }
+        List<MultipartFile> texts = nonEmptyFiles(textFiles);
+        List<MultipartFile> answers = nonEmptyFiles(answerFiles);
+        if (replaceTextFiles && texts.isEmpty()) {
+            throw new IllegalArgumentException("Для замены текстов выберите хотя бы один новый файл");
+        }
+        if (replaceAnswerFiles && answers.isEmpty()) {
+            throw new IllegalArgumentException("Для замены ответов выберите хотя бы один новый файл");
+        }
+        texts.forEach(file -> validateFile(file, "текста работы"));
+        answers.forEach(file -> validateFile(file, "ответов"));
+
+        Path directory = yearDirectory(material.getAcademicYear());
+        Files.createDirectories(directory);
+        migrateLegacyFiles(material);
+        List<PaWorkMaterialFile> existing = (replaceTextFiles || replaceAnswerFiles)
+                ? fileRepository.findAllByMaterialIdOrderByKindAscOriginalFileNameAscIdAsc(materialId)
+                : List.of();
+        List<PaWorkMaterialFile> replaced = existing.stream()
+                .filter(file -> (replaceTextFiles && file.getKind() == PaWorkMaterialFileKind.TEXT)
+                        || (replaceAnswerFiles && file.getKind() == PaWorkMaterialFileKind.ANSWERS))
+                .toList();
+
+        LocalDateTime now = LocalDateTime.now();
+        for (MultipartFile file : texts) {
+            storeAttachment(material, PaWorkMaterialFileKind.TEXT, file, username, uploaderFio, now, directory,
+                    replaceTextFiles);
+        }
+        for (MultipartFile file : answers) {
+            storeAttachment(material, PaWorkMaterialFileKind.ANSWERS, file, username, uploaderFio, now, directory,
+                    replaceAnswerFiles);
+        }
+        deleteAttachments(directory, replaced);
+        if (replaceTextFiles) clearLegacyFileMetadata(material, PaWorkMaterialFileKind.TEXT);
+        if (replaceAnswerFiles) clearLegacyFileMetadata(material, PaWorkMaterialFileKind.ANSWERS);
+
+        material.setVariantCount(variantCount);
+        material.setUpdatedAt(now);
+        materialRepository.saveAndFlush(material);
+        String action = replaced.isEmpty() ? "Комплект обновлён" : "Комплект обновлён, прежние файлы заменены";
+        String message = action + ". Загружено файлов: " + (texts.size() + answers.size())
                 + " (тексты: " + texts.size() + ", ответы: " + answers.size() + ")";
         return new PaDtos.WorkMaterialUploadResponse(material.getId(), texts.size(), answers.size(), message);
     }
@@ -356,9 +441,10 @@ public class PaWorkMaterialService {
                                  String username,
                                  String uploaderFio,
                                  LocalDateTime uploadedAt,
-                                 Path directory) throws IOException {
+                                 Path directory,
+                                 boolean forceNew) throws IOException {
         String original = originalName(upload);
-        Optional<PaWorkMaterialFile> existing = fileRepository
+        Optional<PaWorkMaterialFile> existing = forceNew ? Optional.empty() : fileRepository
                 .findFirstByMaterialIdAndKindAndOriginalFileNameIgnoreCaseOrderByIdDesc(
                         material.getId(), kind, original);
         PaWorkMaterialFile attachment = existing.orElseGet(PaWorkMaterialFile::new);
@@ -374,6 +460,34 @@ public class PaWorkMaterialService {
         attachment.setUploadedAt(uploadedAt);
         fileRepository.saveAndFlush(attachment);
         deleteReplacedFile(directory, oldStoredName, storedName);
+    }
+
+    private void deleteAttachments(Path directory, List<PaWorkMaterialFile> attachments) throws IOException {
+        if (attachments.isEmpty()) return;
+        List<String> storedNames = attachments.stream().map(PaWorkMaterialFile::getStoredFileName).toList();
+        fileRepository.deleteAll(attachments);
+        fileRepository.flush();
+        for (String storedName : storedNames) {
+            if (!blank(storedName).isBlank()) {
+                Files.deleteIfExists(PaStoragePath.resolveUploadedFile(directory, storedName));
+            }
+        }
+    }
+
+    private void clearLegacyFileMetadata(PaWorkMaterial material, PaWorkMaterialFileKind kind) {
+        if (kind == PaWorkMaterialFileKind.TEXT) {
+            material.setTextOriginalFileName(null);
+            material.setTextStoredFileName(null);
+            material.setTextUploadedByUsername(null);
+            material.setTextUploadedByFio(null);
+            material.setTextUploadedAt(null);
+            return;
+        }
+        material.setAnswersOriginalFileName(null);
+        material.setAnswersStoredFileName(null);
+        material.setAnswersUploadedByUsername(null);
+        material.setAnswersUploadedByFio(null);
+        material.setAnswersUploadedAt(null);
     }
 
     private String normalizeScope(PaScopeType type, String value) {

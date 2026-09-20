@@ -273,6 +273,16 @@ function tabPermissionMap(currentUser) {
     return Object.fromEntries((currentUser.tabPermissions || []).map((permission) => [permission.tab, permission]));
 }
 
+function isPastAcademicYearSelected() {
+    const selected = String(getStoredAcademicYear() || '').match(/^(\d{4})\/\d{4}$/);
+    const current = String(window.tarificationCurrentAcademicYear || '').match(/^(\d{4})\/\d{4}$/);
+    return Boolean(selected && current && Number(selected[1]) < Number(current[1]));
+}
+
+function canEditPastAcademicYears(currentUser) {
+    return Boolean(currentUser?.admin || tabPermissionMap(currentUser).EDIT_PAST_ACADEMIC_YEARS?.canEdit);
+}
+
 function currentUserHasRole(currentUser, role) {
     return Boolean(currentUser?.admin || (currentUser?.roles || [currentUser?.role]).filter(Boolean).includes(role));
 }
@@ -451,6 +461,7 @@ function showAccessDenied(sectionTitle = 'раздела') {
 
 function canEditCurrentPage(currentUser) {
     if (currentUser.admin) return true;
+    if (isPastAcademicYearSelected() && !canEditPastAcademicYears(currentUser)) return false;
     if (window.location.pathname.startsWith('/vsoko-pa')) {
         return Boolean(tabPermissionMap(currentUser).VSOKO_EDIT?.canEdit);
     }
@@ -520,7 +531,9 @@ function insertReadonlyNotice(currentUser) {
     if (!header || header.querySelector('.readonly-note')) return;
     const note = document.createElement('p');
     note.className = 'muted readonly-note';
-    note.textContent = 'У вас открыт режим просмотра для текущей вкладки: данные можно смотреть, но не редактировать.';
+    note.textContent = isPastAcademicYearSelected() && !canEditPastAcademicYears(currentUser)
+        ? 'Выбран прошлый учебный год. Его данные доступны только для просмотра; отдельное право на редактирование выдаёт администратор.'
+        : 'У вас открыт режим просмотра для текущей вкладки: данные можно смотреть, но не редактировать.';
     header.appendChild(note);
 }
 
@@ -634,6 +647,7 @@ async function mountAcademicYearSelector() {
     if (!select) return;
     const years = await tarificationApi('/api/academic-years');
     const active = await tarificationApi('/api/academic-years/active');
+    window.tarificationCurrentAcademicYear = active.current || '';
     const currentStored = getStoredAcademicYear();
     const availableCodes = new Set((years || []).map((year) => String(year.code || '')));
     const requestedFromLink = academicYearFromLocation();

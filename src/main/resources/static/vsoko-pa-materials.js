@@ -1,4 +1,4 @@
-const paMaterialsState={references:[],materials:[],subjects:[]};
+const paMaterialsState={references:[],materials:[],subjects:[],editingId:null};
 const html=value=>String(value??'').replace(/[&<>"']/g,ch=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch]));
 const academicYear=()=>sessionStorage.getItem('tarification.academicYear')||'';
 const scoped=path=>{const year=academicYear();if(!year)return path;return `${path}${path.includes('?')?'&':'?'}academicYear=${encodeURIComponent(year)}`;};
@@ -63,7 +63,7 @@ function renderSummary(hostId,from,to){
 function renderRegistry(){
     const body=document.getElementById('pa-material-registry-body');const needle=document.getElementById('pa-material-search').value.trim().toLowerCase();
     const rows=paMaterialsState.materials.filter(row=>!needle||[row.subjectName,row.scopeValue,...materialFiles(row,'TEXT').flatMap(file=>[file.fileName,file.uploadedByFio]),...materialFiles(row,'ANSWERS').flatMap(file=>[file.fileName,file.uploadedByFio])].some(value=>String(value||'').toLowerCase().includes(needle)));
-    body.innerHTML=rows.length?rows.map(row=>`<tr><td>${html(row.subjectName)}</td><td>${row.scopeType==='CLASS'?'Класс':'Параллель'} ${html(row.scopeValue)}</td><td>${html(levelRu(row.level))}</td><td>${html(workRu(row.workType))}</td><td>${html(row.variantCount||1)}</td><td>${fileCell(row,'TEXT')}</td><td>${fileCell(row,'ANSWERS')}</td><td>${dateRu(row.updatedAt)}</td></tr>`).join(''):'<tr><td colspan="8" class="muted">Материалы не найдены</td></tr>';
+    body.innerHTML=rows.length?rows.map(row=>`<tr><td>${html(row.subjectName)}</td><td>${row.scopeType==='CLASS'?'Класс':'Параллель'} ${html(row.scopeValue)}</td><td>${html(levelRu(row.level))}</td><td>${html(workRu(row.workType))}</td><td>${html(row.variantCount||1)}</td><td>${fileCell(row,'TEXT')}</td><td>${fileCell(row,'ANSWERS')}</td><td>${dateRu(row.updatedAt)}</td><td><button type="button" class="secondary" data-material-edit="${html(row.id)}" data-requires-edit>Редактировать</button></td></tr>`).join(''):'<tr><td colspan="9" class="muted">Материалы не найдены</td></tr>';
 }
 
 function fileCell(row,kind){
@@ -84,10 +84,56 @@ function materialUploadForm(){
 async function uploadMaterial(event){
     event.preventDefault();const feedback=document.getElementById('pa-material-feedback');const textFiles=[...document.getElementById('pa-material-text-files').files];const answerFiles=[...document.getElementById('pa-material-answer-files').files];
     if(!textFiles.length&&!answerFiles.length){feedback.textContent='Выберите хотя бы один файл с текстом работы или ответами.';return;}
-    const queue=[...textFiles.map(file=>({field:'textFiles',file})),...answerFiles.map(file=>({field:'answerFiles',file}))];const errors=[];let uploaded=0;document.getElementById('pa-material-upload').disabled=true;
-    try{for(let index=0;index<queue.length;index++){const item=queue[index];feedback.textContent=`Загрузка ${index+1} из ${queue.length}: ${item.file.name}`;const form=materialUploadForm();form.append(item.field,item.file);try{await materialApi('/api/pa/materials',{method:'POST',body:form});uploaded++;}catch(error){errors.push(`${item.file.name}: ${error.message}`);}}if(!errors.length){document.getElementById('pa-material-text-files').value='';document.getElementById('pa-material-answer-files').value='';}await loadMaterials();feedback.textContent=errors.length?`Загружено ${uploaded} из ${queue.length}. Не обработано: ${errors.join('; ')}`:`Все файлы загружены: ${uploaded}.`;}
-    catch(error){feedback.textContent=`Загружено ${uploaded} из ${queue.length}. Не удалось обновить свод: ${error.message}`;}
+    const total=textFiles.length+answerFiles.length;const form=materialUploadForm();textFiles.forEach(file=>form.append('textFiles',file));answerFiles.forEach(file=>form.append('answerFiles',file));document.getElementById('pa-material-upload').disabled=true;
+    try{feedback.textContent=`Отправка комплекта: ${total} файлов…`;const result=await materialApi('/api/pa/materials',{method:'POST',body:form});document.getElementById('pa-material-text-files').value='';document.getElementById('pa-material-answer-files').value='';await loadMaterials();feedback.textContent=result?.message||`Все файлы загружены: ${total}.`;}
+    catch(error){feedback.textContent=`Комплект не загружен: ${error.message}`;}
     finally{document.getElementById('pa-material-upload').disabled=false;}
+}
+
+function editFileList(hostId,files){
+    const host=document.getElementById(hostId);
+    host.innerHTML=files.length?files.map(file=>`<li>${html(file.fileName||'Файл')} <small class="muted">${html(file.uploadedByFio||'неизвестно')}</small></li>`).join(''):'<li class="muted">Не загружены</li>';
+}
+
+function openMaterialEdit(materialId){
+    const row=paMaterialsState.materials.find(item=>Number(item.id)===Number(materialId));if(!row)return;
+    paMaterialsState.editingId=row.id;
+    document.getElementById('pa-material-edit-summary').textContent=`${row.subjectName} · ${row.scopeType==='CLASS'?'класс':'параллель'} ${row.scopeValue} · ${levelRu(row.level)} · ${workRu(row.workType)}`;
+    document.getElementById('pa-material-edit-variant-count').value=row.variantCount||1;
+    editFileList('pa-material-edit-current-texts',materialFiles(row,'TEXT'));
+    editFileList('pa-material-edit-current-answers',materialFiles(row,'ANSWERS'));
+    document.getElementById('pa-material-edit-text-files').value='';
+    document.getElementById('pa-material-edit-answer-files').value='';
+    document.getElementById('pa-material-edit-replace-texts').checked=false;
+    document.getElementById('pa-material-edit-replace-answers').checked=false;
+    document.getElementById('pa-material-edit-feedback').textContent='';
+    document.getElementById('pa-material-edit-dialog').showModal();
+}
+
+async function saveMaterialEdit(event){
+    event.preventDefault();const id=paMaterialsState.editingId;if(!id)return;
+    const feedback=document.getElementById('pa-material-edit-feedback');const save=document.getElementById('pa-material-edit-save');
+    const textFiles=[...document.getElementById('pa-material-edit-text-files').files];const answerFiles=[...document.getElementById('pa-material-edit-answer-files').files];
+    let replaceTexts=document.getElementById('pa-material-edit-replace-texts').checked;let replaceAnswers=document.getElementById('pa-material-edit-replace-answers').checked;
+    if(replaceTexts&&!textFiles.length){feedback.textContent='Для замены текстов выберите хотя бы один новый файл.';return;}
+    if(replaceAnswers&&!answerFiles.length){feedback.textContent='Для замены ответов выберите хотя бы один новый файл.';return;}
+    const total=textFiles.length+answerFiles.length;save.disabled=true;
+    try{
+        const form=new FormData();form.set('variantCount',document.getElementById('pa-material-edit-variant-count').value);form.set('replaceTextFiles',String(replaceTexts));form.set('replaceAnswerFiles',String(replaceAnswers));textFiles.forEach(file=>form.append('textFiles',file));answerFiles.forEach(file=>form.append('answerFiles',file));
+        feedback.textContent=total?`Сохранение комплекта: ${total} файлов…`:'Сохранение количества вариантов…';
+        await materialApi(`/api/pa/materials/${id}`,{method:'PUT',body:form});
+        await loadMaterials();
+        document.getElementById('pa-material-edit-dialog').close();
+    }catch(error){feedback.textContent=`Изменения не сохранены: ${error.message}`;}
+    finally{save.disabled=false;}
+}
+
+async function deleteMaterial(){
+    const id=paMaterialsState.editingId;if(!id)return;if(!confirm('Удалить запись и все прикреплённые тексты и ответы? Восстановить её через реестр будет нельзя.'))return;
+    const feedback=document.getElementById('pa-material-edit-feedback');const button=document.getElementById('pa-material-edit-delete');button.disabled=true;
+    try{feedback.textContent='Удаление записи…';await materialApi(`/api/pa/materials/${id}`,{method:'DELETE'});document.getElementById('pa-material-edit-dialog').close();await loadMaterials();}
+    catch(error){feedback.textContent=`Не удалось удалить запись: ${error.message}`;}
+    finally{button.disabled=false;}
 }
 
 document.querySelectorAll('[data-material-tab]').forEach(button=>button.addEventListener('click',()=>setMaterialTab(button.dataset.materialTab)));
@@ -95,5 +141,9 @@ document.getElementById('pa-material-subject').addEventListener('change',fillSco
 document.getElementById('pa-material-scope-type').addEventListener('change',fillScopes);
 document.getElementById('pa-material-form').addEventListener('submit',uploadMaterial);
 document.getElementById('pa-material-search').addEventListener('input',renderRegistry);
-document.getElementById('pa-material-refresh').addEventListener('click',()=>loadMaterials().catch(error=>{document.getElementById('pa-material-registry-body').innerHTML=`<tr><td colspan="8">${html(error.message)}</td></tr>`;}));
+document.getElementById('pa-material-refresh').addEventListener('click',()=>loadMaterials().catch(error=>{document.getElementById('pa-material-registry-body').innerHTML=`<tr><td colspan="9">${html(error.message)}</td></tr>`;}));
+document.getElementById('pa-material-registry-body').addEventListener('click',event=>{const button=event.target.closest('[data-material-edit]');if(button)openMaterialEdit(button.dataset.materialEdit);});
+document.getElementById('pa-material-edit-form').addEventListener('submit',saveMaterialEdit);
+document.getElementById('pa-material-edit-delete').addEventListener('click',deleteMaterial);
+document.getElementById('pa-material-edit-cancel').addEventListener('click',()=>document.getElementById('pa-material-edit-dialog').close());
 loadMaterials().catch(error=>{document.getElementById('pa-material-feedback').textContent=error.message;});

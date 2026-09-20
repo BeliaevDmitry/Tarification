@@ -23,13 +23,23 @@ class PaWorkMaterialsFrontendTest {
         assertTrue(html.contains("name=\"textFiles\"") && html.contains("name=\"answerFiles\""));
         assertTrue(html.contains("multiple"));
         assertTrue(html.contains("Количество вариантов"));
+        assertTrue(html.contains("/instructions/pa-methodist-instruction.docx"));
+        assertTrue(Files.isRegularFile(Path.of("src/main/resources/static/instructions/pa-methodist-instruction.docx")));
         assertTrue(html.contains("id=\"pa-material-variant-count\""));
         assertTrue(script.contains("file.uploadedByFio"));
-        assertTrue(script.contains("field:'textFiles'") && script.contains("field:'answerFiles'"));
-        assertTrue(script.contains("form.append(item.field,item.file)"));
+        assertTrue(script.contains("form.append('textFiles',file)") && script.contains("form.append('answerFiles',file)"));
         assertTrue(script.contains("form.set('variantCount'"));
-        assertTrue(script.contains("Загрузка ${index+1} из ${queue.length}"));
+        assertTrue(script.contains("Отправка комплекта"));
         assertTrue(script.contains("/api/pa/materials"));
+        assertTrue(html.contains("id=\"pa-material-edit-dialog\""));
+        assertTrue(html.contains("Заменить все ранее загруженные тексты"));
+        assertTrue(html.contains("Заменить все ранее загруженные ответы"));
+        assertTrue(script.contains("data-material-edit"));
+        assertTrue(script.contains("method:'PUT'"));
+        assertTrue(script.contains("replaceTextFiles"));
+        assertTrue(script.contains("replaceAnswerFiles"));
+        assertTrue(html.contains("id=\"pa-material-edit-delete\""));
+        assertTrue(script.contains("method:'DELETE'"));
         assertTrue(hub.contains("/vsoko-pa-materials.html"));
         assertTrue(auth.contains("label: 'Тексты работ'"));
     }
