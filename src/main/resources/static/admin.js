@@ -76,6 +76,7 @@ const TAB_GROUPS = [
             { key: 'TEACHERS_MCKO', label: 'МЦКО педагогов: сертификаты и предметы' },
             { key: 'VSOKO_VIEW', label: 'ОГЭ, ЕГЭ и ПА: просмотр' },
             { key: 'VSOKO_EDIT', label: 'ОГЭ, ЕГЭ и ПА: редактирование' },
+            { key: 'EDIT_PAST_ACADEMIC_YEARS', label: 'Редактирование данных прошлых учебных лет', sensitive: true },
             { key: 'VSOKO_MCKO', label: 'МЦКО обучающихся: результаты и своды' },
             { key: 'OGE_UPLOAD_VIEW', label: 'ОГЭ: выгрузка (просмотр)' },
             { key: 'OGE_MISMATCH_VIEW', label: 'ОГЭ: нестыковки (просмотр)', sensitive: true },

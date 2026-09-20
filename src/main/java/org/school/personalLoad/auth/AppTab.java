@@ -41,6 +41,7 @@ public enum AppTab {
     DOCUMENTS_EXIT_ORDERS("Документы: приказы на выход", "/exit-orders.html"),
     VSOKO_VIEW("ВСОКО: просмотр", "/vsoko.html"),
     VSOKO_EDIT("ВСОКО: редактирование", "/vsoko-oge.html"),
+    EDIT_PAST_ACADEMIC_YEARS("Система: редактирование прошлых учебных лет", "/settings.html"),
     VSOKO_MCKO("Качество: МЦКО обучающихся", "/vsoko-mcko.html"),
     OGE_UPLOAD_VIEW("ВСОКО: ОГЭ/Выгрузка (просмотр)", "/vsoko-oge.html#upload"),
     OGE_MISMATCH_VIEW("ВСОКО: ОГЭ/Нестыковки (просмотр)", "/vsoko-oge.html#mismatches"),
@@ -75,7 +76,7 @@ public enum AppTab {
                 CONTINGENT_ADMISSION, CONTINGENT_CLASS_TRANSFERS, CONTINGENT_ADMISSION_ROLES, OVZ,
                 EDUCATIONAL_WORK, CLASS_TEACHER_EXIT_ORDER_CREATE, CLASS_TEACHER_EXIT_ORDER_SUMMARY,
                 DOCUMENTS_PEDAGOGICAL_COUNCILS, DOCUMENTS_PROBE_ORDERS, DOCUMENTS_EXIT_ORDERS,
-                VSOKO_VIEW, VSOKO_EDIT, VSOKO_MCKO, OGE_UPLOAD_VIEW, OGE_MISMATCH_VIEW,
+                VSOKO_VIEW, VSOKO_EDIT, EDIT_PAST_ACADEMIC_YEARS, VSOKO_MCKO, OGE_UPLOAD_VIEW, OGE_MISMATCH_VIEW,
                 OGE_EXTERNAL_WORKS_VIEW, OGE_TEACHER_BINDING_VIEW, OGE_SCORE_VIEW, OGE_EVALUATION_VIEW,
                 OGE_GIA_UPLOAD, OGE_WORK_UPLOAD, USERS);
     }

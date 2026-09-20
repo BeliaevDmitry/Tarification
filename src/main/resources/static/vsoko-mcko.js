@@ -6,7 +6,11 @@ const mckoState = { files: [], resultsLoaded: false, linkingResultId: null, uplo
 function esc(value) { return String(value ?? '').replace(/[&<>"']/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[ch])); }
 function currentYear() { return sessionStorage.getItem('tarification.academicYear') || ''; }
 async function mckoApi(path, options = {}) {
-    const response = await fetch(path, options); const text = await response.text(); let body = null;
+    const selectedYear = currentYear();
+    const scopedPath = selectedYear && !String(path).includes('academicYear=')
+        ? `${path}${String(path).includes('?') ? '&' : '?'}academicYear=${encodeURIComponent(selectedYear)}`
+        : path;
+    const response = await fetch(scopedPath, options); const text = await response.text(); let body = null;
     try { body = text ? JSON.parse(text) : null; } catch { body = text ? { message: text } : null; }
     if (!response.ok) {
         if (response.status === 413) {

@@ -373,6 +373,7 @@ public class AppUserServiceImpl implements AppUserService {
         return tab == AppTab.LOAD_SALARY
                 || tab == AppTab.LOAD_MASTER_FOT
                 || tab == AppTab.OGE_MISMATCH_VIEW
+                || tab == AppTab.EDIT_PAST_ACADEMIC_YEARS
                 || tab == AppTab.CONTINGENT_ADMISSION_ROLES;
     }
 

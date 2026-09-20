@@ -18,7 +18,11 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import javax.servlet.http.HttpSession;
 import java.io.IOException;
+import java.net.URLDecoder;
+import java.nio.charset.StandardCharsets;
+import java.time.LocalDate;
 import java.time.LocalDateTime;
+import java.util.Arrays;
 import java.util.Map;
 import java.util.Set;
 
@@ -181,8 +185,37 @@ public class AuthFilter extends OncePerRequestFilter {
             rejectForbidden(request, response, "У пользователя нет прав на редактирование этой вкладки");
             return;
         }
+        if (isWriteApiRequest(request, path)
+                && isPastAcademicYearRequest(request)
+                && !currentUser.canEditTab(AppTab.EDIT_PAST_ACADEMIC_YEARS)) {
+            rejectForbidden(request, response,
+                    "Редактирование данных прошлого учебного года запрещено. Администратор может выдать отдельное право в настройках пользователя");
+            return;
+        }
 
         filterChain.doFilter(request, response);
+    }
+
+    private boolean isPastAcademicYearRequest(HttpServletRequest request) {
+        String requestedYear = queryParameter(request.getQueryString(), "academicYear");
+        if (requestedYear == null || requestedYear.isBlank()) return false;
+        java.util.regex.Matcher matcher = java.util.regex.Pattern.compile("^(\\d{4})[/\\-](\\d{4})$")
+                .matcher(requestedYear.trim());
+        if (!matcher.matches()) return false;
+        int requestedStart = Integer.parseInt(matcher.group(1));
+        LocalDate today = LocalDate.now();
+        int currentStart = today.getMonthValue() >= 8 ? today.getYear() : today.getYear() - 1;
+        return requestedStart < currentStart;
+    }
+
+    private String queryParameter(String query, String name) {
+        if (query == null || query.isBlank()) return null;
+        return Arrays.stream(query.split("&"))
+                .map(part -> part.split("=", 2))
+                .filter(parts -> parts.length == 2 && name.equals(URLDecoder.decode(parts[0], StandardCharsets.UTF_8)))
+                .map(parts -> URLDecoder.decode(parts[1], StandardCharsets.UTF_8))
+                .findFirst()
+                .orElse(null);
     }
 
     private SessionUser currentUser(HttpSession session) {

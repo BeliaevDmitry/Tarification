@@ -27,6 +27,7 @@ class PaFrontendResilienceTest {
 
         assertTrue(page.contains("id=\"pa-spec-template-btn\""));
         assertTrue(page.contains("Скачать шаблон спецификации"));
+        assertTrue(page.contains("/instructions/pa-methodist-instruction.docx"));
         assertTrue(script.contains("'/api/pa/specifications/template'"));
         assertTrue(script.contains("bindClick('pa-spec-template-btn', downloadSpecificationTemplate)"));
     }

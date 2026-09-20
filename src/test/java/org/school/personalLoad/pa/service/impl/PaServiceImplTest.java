@@ -93,9 +93,9 @@ class PaServiceImplTest {
             Sheet template = workbook.getSheet("Спецификация");
             assertNotNull(template);
             assertEquals("Предмет", template.getRow(4).getCell(0).getStringCellValue());
-            assertEquals("№ задания", template.getRow(15).getCell(0).getStringCellValue());
+            assertEquals("№ задания", template.getRow(14).getCell(0).getStringCellValue());
             assertNull(template.getPaneInformation(), "В шаблоне не должно быть закреплённых строк");
-            List<String> fieldLabels = java.util.stream.IntStream.rangeClosed(3, 13)
+            List<String> fieldLabels = java.util.stream.IntStream.rangeClosed(3, 12)
                     .mapToObj(row -> template.getRow(row))
                     .filter(java.util.Objects::nonNull)
                     .map(row -> row.getCell(0))
@@ -104,6 +104,7 @@ class PaServiceImplTest {
                     .toList();
             assertFalse(fieldLabels.contains("Учитель"));
             assertFalse(fieldLabels.contains("Дата работы"));
+            assertFalse(fieldLabels.contains("Школа"));
             assertTrue(workbook.isSheetHidden(workbook.getSheetIndex("Справочники")));
             assertNotNull(workbook.getName("PaSubjects"));
             assertNotNull(workbook.getName("PaScopes"));
@@ -135,11 +136,11 @@ class PaServiceImplTest {
             sheet.getRow(5).getCell(1).setCellValue("7-А");
             sheet.getRow(6).getCell(1).setCellValue("Выходная работа");
             sheet.getRow(7).getCell(1).setCellValue("Базовый");
-            sheet.getRow(9).getCell(1).setCellValue("Пятибалльная");
-            sheet.getRow(10).getCell(1).setCellValue(85);
-            sheet.getRow(11).getCell(1).setCellValue(65);
-            sheet.getRow(12).getCell(1).setCellValue(40);
-            Row task = sheet.getRow(16);
+            sheet.getRow(8).getCell(1).setCellValue("Пятибалльная");
+            sheet.getRow(9).getCell(1).setCellValue(85);
+            sheet.getRow(10).getCell(1).setCellValue(65);
+            sheet.getRow(11).getCell(1).setCellValue(40);
+            Row task = sheet.getRow(15);
             task.getCell(1).setCellValue("Дроби");
             task.getCell(2).setCellValue("Выполняет действия с дробями");
             task.getCell(3).setCellValue("Новое");

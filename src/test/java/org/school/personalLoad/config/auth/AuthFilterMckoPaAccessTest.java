@@ -12,6 +12,7 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
 import javax.servlet.FilterChain;
+import java.time.LocalDate;
 import java.util.LinkedHashSet;
 import java.util.List;
 
@@ -57,6 +58,30 @@ class AuthFilterMckoPaAccessTest {
         TabPermissionSnapshot edit = new TabPermissionSnapshot(AppTab.VSOKO_EDIT, true, true, false, false);
         assertAccess(new MockHttpServletRequest("POST", "/api/pa/materials"), List.of(view), false);
         assertAccess(new MockHttpServletRequest("POST", "/api/pa/materials"), List.of(edit), true);
+        assertAccess(new MockHttpServletRequest("PUT", "/api/pa/materials/42"), List.of(view), false);
+        assertAccess(new MockHttpServletRequest("PUT", "/api/pa/materials/42"), List.of(edit), true);
+    }
+
+    @Test
+    void pastAcademicYearWritesRequireDedicatedPermission() throws Exception {
+        TabPermissionSnapshot edit = new TabPermissionSnapshot(AppTab.VSOKO_EDIT, true, true, false, false);
+        TabPermissionSnapshot pastYears = new TabPermissionSnapshot(
+                AppTab.EDIT_PAST_ACADEMIC_YEARS, true, true, false, false);
+        LocalDate today = LocalDate.now();
+        int currentStart = today.getMonthValue() >= 8 ? today.getYear() : today.getYear() - 1;
+        String pastYear = (currentStart - 1) + "%2F" + currentStart;
+        String currentYear = currentStart + "%2F" + (currentStart + 1);
+        MockHttpServletRequest denied = new MockHttpServletRequest("PUT", "/api/pa/materials/42");
+        denied.setQueryString("academicYear=" + pastYear);
+        assertAccess(denied, List.of(edit), false);
+
+        MockHttpServletRequest allowed = new MockHttpServletRequest("PUT", "/api/pa/materials/42");
+        allowed.setQueryString("academicYear=" + pastYear);
+        assertAccess(allowed, List.of(edit, pastYears), true);
+
+        MockHttpServletRequest current = new MockHttpServletRequest("PUT", "/api/pa/materials/42");
+        current.setQueryString("academicYear=" + currentYear);
+        assertAccess(current, List.of(edit), true);
     }
 
     @Test
@@ -158,12 +183,13 @@ class AuthFilterMckoPaAccessTest {
 
         filter.doFilter(request, response, chain);
 
-        assertEquals(expected, chain.called);
+        assertEquals(expected, chain.called, response.getContentAsString());
         if (expected) {
             assertEquals(200, response.getStatus());
         } else if (request.getRequestURI().startsWith("/api/")) {
             assertEquals(403, response.getStatus());
-            assertTrue(response.getContentAsString().contains("нет прав"));
+            assertTrue(response.getContentAsString().contains("нет прав")
+                    || response.getContentAsString().contains("запрещено"));
         } else {
             assertEquals(302, response.getStatus());
             assertEquals("/", response.getRedirectedUrl());
