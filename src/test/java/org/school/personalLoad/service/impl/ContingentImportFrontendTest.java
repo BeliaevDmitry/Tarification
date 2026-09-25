@@ -131,7 +131,9 @@ class ContingentImportFrontendTest {
         assertTrue(pageScript.contains("DOCUMENTS_WITHDRAWN"));
         assertTrue(pageScript.contains("data-admission-modal=\"AGREE\""));
         assertTrue(pageScript.contains("data-admission-modal=\"REFUSE\""));
-        assertTrue(pageScript.contains("data-admission-action=\"TESTING\""));
+        assertTrue(pageScript.contains("data-admission-modal=\"TESTING\""));
+        assertTrue(pageScript.contains("'Назначить тестирование'"));
+        assertTrue(pageScript.contains("payload.comment = ui.admissionActionComment.value"));
         assertTrue(pageScript.contains("data-admission-action=\"PROCESSED\""));
         assertTrue(pageScript.contains("admission-row-testing"));
         assertTrue(pageScript.contains("row.additionalInfo"));

@@ -114,8 +114,13 @@ public class AdmissionService {
                 candidate.setDocumentStatus(AdmissionDocumentStatus.ENROLLED);
             }
             case "REFUSE" -> refuse(candidate, request);
-            case "TESTING" -> candidate.setTesting(request != null && request.getTesting() != null
-                    ? request.getTesting() : !candidate.isTesting());
+            case "TESTING" -> {
+                candidate.setTesting(request != null && request.getTesting() != null
+                        ? request.getTesting() : !candidate.isTesting());
+                if (request != null && request.getComment() != null) {
+                    candidate.setComment(normalizeMultiline(request.getComment()));
+                }
+            }
             case "PROBLEM" -> candidate.setProblems(normalizeMultiline(request == null ? null : request.getProblems()));
             case "PROCESSED" -> candidate.setProcessed(true);
             case "REOPEN" -> candidate.setProcessed(false);

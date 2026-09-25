@@ -669,6 +669,9 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                                        List<ManualLoadEntry> addedRows,
                                        List<ManualLoadEntry> periodRows,
                                        List<TarifficationChanges> periodChanges) {
+        if (hasVacancyTransferSource(teacherKey, changeDate, addedRows, periodRows, periodChanges)) {
+            return MemoReason.VACANCY_TRANSFER;
+        }
         if (hasTransferPair(teacherKey, changeDate, addedRows, removedRows, periodRows, periodChanges)) {
             return MemoReason.PRODUCTION_NECESSITY;
         }
@@ -681,6 +684,42 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
             return MemoReason.NEW_EMPLOYEE;
         }
         return MemoReason.PRODUCTION_NECESSITY;
+    }
+
+    private boolean hasVacancyTransferSource(String teacherKey,
+                                             LocalDate changeDate,
+                                             List<ManualLoadEntry> addedRows,
+                                             List<ManualLoadEntry> periodRows,
+                                             List<TarifficationChanges> periodChanges) {
+        Set<String> addedKeys = Optional.ofNullable(addedRows).orElseGet(List::of).stream()
+                .map(this::subjectClassKeyOf)
+                .collect(Collectors.toSet());
+        if (addedKeys.isEmpty()) {
+            return false;
+        }
+
+        boolean foundInLoad = Optional.ofNullable(periodRows).orElseGet(List::of).stream()
+                .filter(row -> !Objects.equals(teacherKey, normalize(row.getFioTeacher())))
+                .filter(row -> isVacancyFio(row.getFioTeacher()))
+                .filter(row -> Objects.equals(row.getLoadToDate(), changeDate.minusDays(1)))
+                .map(this::subjectClassKeyOf)
+                .anyMatch(addedKeys::contains);
+        if (foundInLoad) {
+            return true;
+        }
+
+        return Optional.ofNullable(periodChanges).orElseGet(List::of).stream()
+                .filter(change -> change.getChangeDate() != null
+                        && Objects.equals(changeDate, change.getChangeDate().toLocalDate()))
+                .filter(change -> change.getChangeType() == TarifficationChanges.ChangeType.REMOVED)
+                .filter(change -> isVacancyFio(change.getFioTeacher()))
+                .map(this::subjectClassKeyOf)
+                .anyMatch(addedKeys::contains);
+    }
+
+    private boolean isVacancyFio(String fio) {
+        String normalized = normalize(fio);
+        return normalized != null && normalized.contains("вакансия");
     }
 
     private boolean hasCurriculumPlanSignal(String teacherKey,
@@ -1265,7 +1304,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
             paragraph(doc, "СЛУЖЕБНАЯ ЗАПИСКА", true, ParagraphAlignment.CENTER, 16, 0, 220, 0);
             paragraph(doc, buildRationaleText(aggregate, teacherDative), false, ParagraphAlignment.BOTH, 14, 0, 120, 420);
 
-            int totalRemainingHours = appendTable(doc, aggregate.rows(), aggregate, aggregate.newEmployeeMemo());
+            int totalRemainingHours = appendTable(doc, aggregate.rows(), aggregate);
             paragraph(doc, "", false, ParagraphAlignment.LEFT, 14, 120, 0, 0);
             paragraph(doc, "Итого: " + totalRemainingHours + " ч.", true, ParagraphAlignment.LEFT, 14, 0, 160, 0);
             paragraph(doc, createdBy, false, ParagraphAlignment.RIGHT, 14, 220, 0, 0);
@@ -1289,11 +1328,14 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                                                   String createdBy,
                                                   String teacherDative,
                                                   ServiceMemoSettingsDto memoSettings) {
+        boolean vacancyTransferMode = aggregate.vacancyTransferMemo();
         int totalHours = aggregate.rows().stream()
                 .filter(Objects::nonNull)
+                .filter(row -> !vacancyTransferMode || "Добавить".equalsIgnoreCase(resolveStatus(aggregate, row)))
                 .map(row -> resolveStatus(aggregate, row).equalsIgnoreCase("Снять") ? 0 : Optional.ofNullable(row.getLoad()).orElse(0))
                 .mapToInt(Integer::intValue)
                 .sum();
+        String rationale = buildRationaleText(aggregate, teacherDative);
         Map<String, String> placeholders = Map.of(
                 PLACEHOLDER_DIRECTOR_TITLE, Optional.ofNullable(memoSettings.directorTitle()).orElse(""),
                 PLACEHOLDER_DIRECTOR_NAME, Optional.ofNullable(memoSettings.directorName()).orElse(""),
@@ -1302,18 +1344,35 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                 PLACEHOLDER_START_DATE, RU_DATE.format(aggregate.startDate()),
                 PLACEHOLDER_TOTAL_HOURS, String.valueOf(totalHours),
                 PLACEHOLDER_CREATED_DATE, RU_DATE.format(LocalDate.now()),
-                PLACEHOLDER_RATIONALE, buildRationaleText(aggregate, teacherDative)
+                PLACEHOLDER_RATIONALE, rationale
         );
         for (XWPFParagraph paragraph : allDocumentParagraphs(doc)) {
-            replaceOldRationaleIntro(paragraph);
+            replaceOldRationaleIntro(paragraph, vacancyTransferMode ? rationale : "");
+            if (vacancyTransferMode) {
+                removeLegacyLoadIntro(paragraph);
+            }
             replaceMemoParagraph(paragraph, placeholders);
         }
         insertMemoTable(doc, aggregate);
         return totalHours;
     }
 
-    private void replaceOldRationaleIntro(XWPFParagraph paragraph) {
+    private void replaceOldRationaleIntro(XWPFParagraph paragraph, String replacement) {
         if (!OLD_RATIONALE_INTRO.equals(paragraph.getText())) {
+            return;
+        }
+        while (paragraph.getRuns().size() > 0) paragraph.removeRun(0);
+        if (replacement != null && !replacement.isBlank()) {
+            XWPFRun run = paragraph.createRun();
+            run.setText(replacement);
+            run.setFontFamily("Times New Roman");
+            run.setFontSize(14);
+        }
+    }
+
+    private void removeLegacyLoadIntro(XWPFParagraph paragraph) {
+        String text = paragraph.getText();
+        if (text == null || !safe(text).contains("считать актуальной следующую учебную нагрузку")) {
             return;
         }
         while (paragraph.getRuns().size() > 0) paragraph.removeRun(0);
@@ -1350,15 +1409,18 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         while (marker.getRuns().size() > 0) marker.removeRun(0);
         XmlCursor cursor = marker.getCTP().newCursor();
         XWPFTable table = doc.insertNewTbl(cursor);
-        appendTableToExisting(table, aggregate.rows(), aggregate, aggregate.newEmployeeMemo());
+        appendTableToExisting(table, aggregate.rows(), aggregate);
     }
 
-    private int appendTable(XWPFDocument doc, List<ManualLoadEntry> rows, TeacherChangeAggregate aggregate, boolean newEmployeeMode) {
-        XWPFTable table = doc.createTable(1, newEmployeeMode ? 5 : 6);
-        return appendTableToExisting(table, rows, aggregate, newEmployeeMode);
+    private int appendTable(XWPFDocument doc, List<ManualLoadEntry> rows, TeacherChangeAggregate aggregate) {
+        boolean vacancyTransferMode = aggregate.vacancyTransferMemo();
+        XWPFTable table = doc.createTable(1, vacancyTransferMode ? 3 : (aggregate.newEmployeeMemo() ? 5 : 6));
+        return appendTableToExisting(table, rows, aggregate);
     }
 
-    private int appendTableToExisting(XWPFTable table, List<ManualLoadEntry> rows, TeacherChangeAggregate aggregate, boolean newEmployeeMode) {
+    private int appendTableToExisting(XWPFTable table, List<ManualLoadEntry> rows, TeacherChangeAggregate aggregate) {
+        boolean newEmployeeMode = aggregate.newEmployeeMemo();
+        boolean vacancyTransferMode = aggregate.vacancyTransferMemo();
         table.setWidthType(TableWidthType.PCT);
         table.setWidth("100%");
         table.setTableAlignment(TableRowAlign.CENTER);
@@ -1367,6 +1429,7 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
         for (ManualLoadEntry row : Optional.ofNullable(rows).orElseGet(List::of)) {
             if (row == null) continue;
             String status = resolveStatus(aggregate, row);
+            if (vacancyTransferMode && !"Добавить".equalsIgnoreCase(status)) continue;
             java.math.BigDecimal totalHours = loadSalaryCalculationService.totalHours(row);
             java.math.BigDecimal includedHours = loadSalaryCalculationService.includedHours(row);
             java.math.BigDecimal paidHours = loadSalaryCalculationService.paidHours(row);
@@ -1377,12 +1440,13 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
                     totalHours, includedHours, paidHours, status));
         }
 
-        boolean showIncludedHours = rowsForDisplay.values().stream()
+        boolean showIncludedHours = !vacancyTransferMode && rowsForDisplay.values().stream()
                 .anyMatch(row -> row.includedHours().signum() > 0);
-        List<String> header = new ArrayList<>(List.of("Предмет", "Класс", "Часы всего"));
+        List<String> header = new ArrayList<>(List.of("Предмет", "Класс",
+                vacancyTransferMode ? "Часы" : "Часы всего"));
         if (showIncludedHours) header.add("Внутри ставки");
-        header.add("К оплате");
-        if (!newEmployeeMode) header.add("Статус");
+        if (!vacancyTransferMode) header.add("К оплате");
+        if (!newEmployeeMode && !vacancyTransferMode) header.add("Статус");
         trimRow(table.getRow(0), header.size());
         trimTableGrid(table, header.size());
         for (int i = 0; i < header.size(); i++) {
@@ -1400,9 +1464,11 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
             if (showIncludedHours) {
                 setCellText(ensureCell(tr, column++), formatHours(row.includedHours()), false);
             }
-            setCellText(ensureCell(tr, column++), formatHours(row.paidHours()), false);
+            if (!vacancyTransferMode) {
+                setCellText(ensureCell(tr, column++), formatHours(row.paidHours()), false);
+            }
             if (!"Снять".equalsIgnoreCase(row.status())) totalRemainingHours += row.totalHours().intValue();
-            if (!newEmployeeMode) setCellText(ensureCell(tr, column), row.status(), false);
+            if (!newEmployeeMode && !vacancyTransferMode) setCellText(ensureCell(tr, column), row.status(), false);
         }
         return totalRemainingHours;
     }
@@ -1442,6 +1508,12 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
 
     private String buildRationaleText(TeacherChangeAggregate aggregate, String teacherDative) {
         String date = RU_DATE.format(aggregate.startDate());
+        if (aggregate.memoReason() == MemoReason.VACANCY_TRANSFER) {
+            return "С " + date
+                    + " установить "
+                    + teacherDative
+                    + " следующую учебную нагрузку за счет часов, ранее отнесенных на вакансию.";
+        }
         if (aggregate.memoReason() == MemoReason.NEW_EMPLOYEE) {
             return "Прошу Вас с " + date
                     + " утвердить нагрузку на учебный год вновь принятому сотруднику "
@@ -1798,7 +1870,8 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
     private enum MemoReason {
         PRODUCTION_NECESSITY,
         NEW_EMPLOYEE,
-        CURRICULUM_PLAN_ALIGNMENT
+        CURRICULUM_PLAN_ALIGNMENT,
+        VACANCY_TRANSFER
     }
 
     private record TeacherChangeAggregate(
@@ -1825,6 +1898,10 @@ public class ServiceMemoServiceImpl implements ServiceMemoService {
 
         private boolean newEmployeeMemo() {
             return memoReason == MemoReason.NEW_EMPLOYEE;
+        }
+
+        private boolean vacancyTransferMemo() {
+            return memoReason == MemoReason.VACANCY_TRANSFER;
         }
     }
 

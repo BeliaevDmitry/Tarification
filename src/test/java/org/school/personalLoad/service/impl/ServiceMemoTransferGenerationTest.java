@@ -306,6 +306,63 @@ class ServiceMemoTransferGenerationTest {
     }
 
     @Test
+    void transferFromVacancyUsesDedicatedRationaleAndThreeColumnTable() throws Exception {
+        LocalDate transferDate = LocalDate.of(2026, 9, 16);
+        ManualLoadEntry vacancy = row("Вакансия начальных классов", "Математика", "1-А", 6,
+                LocalDate.of(2026, 9, 1), transferDate.minusDays(1));
+        ManualLoadEntry vacancyRemainder = row("Вакансия начальных классов", "Математика", "1-А", 2,
+                transferDate, LocalDate.of(2027, 5, 31));
+        ManualLoadEntry existing = row("Лунгу Полина Андреевна", "Русский язык", "1-Б", 3,
+                LocalDate.of(2026, 9, 1), LocalDate.of(2027, 5, 31));
+        ManualLoadEntry transferred = row("Лунгу Полина Андреевна", "Математика", "1-А", 4,
+                transferDate, LocalDate.of(2027, 5, 31));
+        when(manualLoadEntryRepository.findAllByAcademicYear("2026/2027"))
+                .thenReturn(List.of(vacancy, vacancyRemainder, existing, transferred));
+
+        org.school.personalLoad.model.TeacherDirectoryEntry teacher =
+                new org.school.personalLoad.model.TeacherDirectoryEntry();
+        teacher.setId(1L);
+        teacher.setFioTeacher("Лунгу Полина Андреевна");
+        teacher.setFioTeacherDative("Лунгу Полине Андреевне");
+        when(teacherDirectoryRepository.findAll()).thenReturn(List.of(teacher));
+
+        ServiceMemoDtos.PendingTeacher pending = service.findPendingTeachers("2026/2027").stream()
+                .filter(row -> "Лунгу Полина Андреевна".equals(row.getFioTeacher()))
+                .filter(row -> transferDate.equals(row.getStartDate()))
+                .findFirst()
+                .orElseThrow();
+
+        savedMemos.clear();
+        service.generateForTeachers("2026/2027", List.of(pending.getTeacherKey()), "Автор");
+        ServiceMemo memo = savedMemos.get(savedMemos.size() - 1);
+        try (XWPFDocument document = new XWPFDocument(new ByteArrayInputStream(memo.getGeneratedDocument()))) {
+            String paragraphs = document.getParagraphs().stream()
+                    .map(XWPFParagraph::getText)
+                    .collect(java.util.stream.Collectors.joining("\n"));
+            assertTrue(paragraphs.contains("С 16.09.2026 установить Лунгу Полине Андреевне следующую учебную нагрузку за счет часов, ранее отнесенных на вакансию."));
+            assertTrue(paragraphs.contains("Итого: 4 ч."));
+
+            XWPFTable loadTable = document.getTables().stream()
+                    .filter(table -> table.getText().contains("Предмет"))
+                    .filter(table -> table.getText().contains("Класс"))
+                    .filter(table -> table.getText().contains("Часы"))
+                    .findFirst()
+                    .orElseThrow();
+            assertEquals(3, loadTable.getRow(0).getTableCells().size());
+            assertEquals("Предмет", loadTable.getRow(0).getCell(0).getText());
+            assertEquals("Класс", loadTable.getRow(0).getCell(1).getText());
+            assertEquals("Часы", loadTable.getRow(0).getCell(2).getText());
+            assertEquals(2, loadTable.getRows().size());
+            assertEquals("Математика", loadTable.getRow(1).getCell(0).getText());
+            assertEquals("1-А", loadTable.getRow(1).getCell(1).getText());
+            assertEquals("4", loadTable.getRow(1).getCell(2).getText());
+            assertFalse(loadTable.getText().contains("Русский язык"));
+            assertFalse(loadTable.getText().contains("Статус"));
+            assertFalse(loadTable.getText().contains("К оплате"));
+        }
+    }
+
+    @Test
     void newEmployeeUsesNewEmployeeRationaleAndTableWithoutStatus() throws Exception {
         ManualLoadEntry row = row("Сидоров С.С.", "Математика", "5-А", 5,
                 LocalDate.of(2025, 10, 11), LocalDate.of(2026, 5, 31));

@@ -152,8 +152,11 @@ class AdmissionServiceTest {
         AdmissionDtos.ActionRequest testing = new AdmissionDtos.ActionRequest();
         testing.setAction("TESTING");
         testing.setTesting(true);
-        assertEquals(true, service.action("2026/2027", 1L, testing, "Секретарь")
-                .getCandidates().get(0).isTesting());
+        testing.setComment("Пригласить на тестирование 28 сентября");
+        var candidate = service.action("2026/2027", 1L, testing, "Секретарь")
+                .getCandidates().get(0);
+        assertEquals(true, candidate.isTesting());
+        assertEquals("Пригласить на тестирование 28 сентября", candidate.getComment());
 
         AdmissionDtos.ActionRequest agree = new AdmissionDtos.ActionRequest();
         agree.setAction("AGREE");

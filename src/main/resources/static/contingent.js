@@ -986,7 +986,9 @@ function admissionActionButtons(row) {
     const buttons = [];
     if (access.canEdit) {
         buttons.push(`<button type="button" class="secondary" data-admission-edit="${esc(row.id)}">Изменить</button>`);
-        buttons.push(`<button type="button" class="${row.testing ? 'admission-testing-active' : 'secondary'}" data-admission-action="TESTING" data-admission-id="${esc(row.id)}">${row.testing ? 'Снять тестирование' : 'Тестирование'}</button>`);
+        buttons.push(row.testing
+            ? `<button type="button" class="admission-testing-active" data-admission-action="TESTING" data-admission-id="${esc(row.id)}">Снять тестирование</button>`
+            : `<button type="button" class="secondary" data-admission-modal="TESTING" data-admission-id="${esc(row.id)}">Тестирование</button>`);
         buttons.push(`<button type="button" class="${row.problems ? 'admission-problem-active' : 'secondary'}" data-admission-modal="PROBLEM" data-admission-id="${esc(row.id)}">Проблема</button>`);
     }
     if (access.canDecide) {
@@ -1086,9 +1088,12 @@ function openAdmissionActionDialog(id, action) {
     const isAgree = action === 'AGREE';
     const isRefuse = action === 'REFUSE';
     const isProblem = action === 'PROBLEM';
+    const isTesting = action === 'TESTING';
     ui.admissionActionId.value = row.id;
     ui.admissionActionType.value = action;
-    ui.admissionActionTitle.textContent = isAgree ? 'Согласовать приём' : isRefuse ? 'Зафиксировать отказ' : 'Проблема по заявлению';
+    ui.admissionActionTitle.textContent = isAgree ? 'Согласовать приём'
+        : isRefuse ? 'Зафиксировать отказ'
+            : isTesting ? 'Назначить тестирование' : 'Проблема по заявлению';
     ui.admissionActionChild.textContent = `${row.fullName} · ${row.requestedParallel} параллель`;
     ui.admissionActionClassField.hidden = !isAgree;
     ui.admissionActionCommentField.hidden = isProblem;
@@ -1125,6 +1130,9 @@ async function saveAdmissionAction(event) {
         payload.comment = ui.admissionActionComment.value;
     } else if (action === 'PROBLEM') {
         payload.problems = ui.admissionActionProblem.value;
+    } else if (action === 'TESTING') {
+        payload.testing = true;
+        payload.comment = ui.admissionActionComment.value;
     }
     ui.admissionActionMessage.textContent = 'Сохраняю…';
     try {
